@@ -46,10 +46,30 @@ Farkle is a dice game where players roll 6 dice to accumulate points. The challe
 npm install
 \`\`\`
 
-### Run Example Game
+### Run Web Interface 🌐
+
+\`\`\`bash
+npm start
+\`\`\`
+
+Then open your browser to **http://localhost:3000**
+
+The web interface lets you:
+- Select multiple strategies to compare
+- Configure simulation parameters
+- Watch real-time progress
+- See detailed results with win rates and statistics
+
+### Run Example Game (CLI)
 
 \`\`\`bash
 npx tsx examples/basic-game.ts
+\`\`\`
+
+### Run Simulation (CLI)
+
+\`\`\`bash
+npx tsx examples/run-simulation.ts
 \`\`\`
 
 ### Run Tests
@@ -161,12 +181,20 @@ interface StrategyContext {
 
 This allows strategies to be as simple or complex as you want!
 
-## 🔜 Coming Soon
+## 🎨 Web Interface Features
 
-- 📊 **Simulator** - Run thousands of games to compare strategies
-- 🌐 **Web UI** - Visual interface with charts and real-time updates
-- 📈 **Statistics** - Win rates, score distributions, matchup analysis
-- 🤖 **Advanced Strategies** - ML-based, Monte Carlo, etc.
+- ✅ **Strategy Selector** - Click to select multiple strategies to compare
+- ✅ **Real-time Progress** - Watch simulations run with live progress bar
+- ✅ **Detailed Statistics** - Win rates, average scores, farkle rates, and more
+- ✅ **Beautiful UI** - Gradient design with responsive cards
+- ✅ **WebSocket Updates** - Instant feedback as games complete
+
+## 🔜 Future Enhancements
+
+- 📈 **Charts & Graphs** - Visual score distributions and trend analysis
+- 🎮 **Interactive Play** - Play against strategies yourself
+- 🤖 **Advanced Strategies** - ML-based, Monte Carlo simulations
+- 💾 **Save Results** - Export and compare historical simulations
 
 ## 🛠️ Development
 
