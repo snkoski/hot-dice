@@ -116,9 +116,9 @@ export class Simulator {
     return Array.from(statsByStrategy.entries()).map(([strategyId, stats]) => {
       const wins = stats.filter(s => s.won).length;
       const scores = stats.map(s => s.finalScore).sort((a, b) => a - b);
-      const totalFarkles = stats.reduce((sum, s) => s.farkles, 0);
-      const totalRolls = stats.reduce((sum, s) => s.rollsPlayed, 0);
-      const totalTurns = stats.reduce((sum, s) => s.turnsPlayed, 0);
+      const totalFarkles = stats.reduce((sum, s) => sum + s.farkles, 0);
+      const totalRolls = stats.reduce((sum, s) => sum + s.rollsPlayed, 0);
+      const totalTurns = stats.reduce((sum, s) => sum + s.turnsPlayed, 0);
 
       return {
         strategyId,
