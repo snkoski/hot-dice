@@ -1,0 +1,32 @@
+{
+  "name": "hot-dice",
+  "version": "1.0.0",
+  "description": "Farkle/Hot Dice game simulator with pluggable strategy system",
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx watch src/web/server/index.ts",
+    "test": "vitest",
+    "test:watch": "vitest --watch",
+    "test:coverage": "vitest --coverage"
+  },
+  "keywords": [
+    "farkle",
+    "hot-dice",
+    "dice-game",
+    "simulator"
+  ],
+  "author": "Shawn Koski",
+  "license": "MIT",
+  "dependencies": {
+    "seedrandom": "^3.0.5"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "@types/seedrandom": "^3.0.8",
+    "typescript": "^5.3.0",
+    "tsx": "^4.7.0",
+    "vitest": "^1.0.0",
+    "@vitest/coverage-v8": "^1.0.0"
+  }
+}
