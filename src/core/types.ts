@@ -67,6 +67,8 @@ export interface PlayerStats {
   totalTurns: number;
   totalRolls: number;
   farkles: number;
+  farkleDiceDistribution?: Record<number, number>; // Count of farkles by dice count (1-6)
+  rollsByDiceCount?: Record<number, number>; // Count of all rolls by dice count (for luck calculation)
   hotDiceCount: number;
   averagePointsPerTurn: number;
   maxTurnScore: number;
@@ -98,7 +100,8 @@ export interface GameState {
   targetScore: number;
   minimumScoreToBoard: number;
   isGameOver: boolean;
-  winnerId: string | null;
+  winnerId: string | null; // Deprecated: use winnerIds for ties
+  winnerIds: string[]; // Array of winner IDs (supports ties)
   turnHistory: TurnRecord[];
 }
 
@@ -111,7 +114,22 @@ export interface TurnRecord {
   pointsScored: number;
   finalScore: number;
   wasFarkle: boolean;
+  farkleDiceCount?: number; // Number of dice rolled when farkle occurred
   timestamp: Date;
+}
+
+/**
+ * Scoring rules configuration
+ */
+export interface ScoringRules {
+  enableStraight: boolean;          // 1-2-3-4-5-6 = 1500 points
+  enableThreePairs: boolean;        // Three pairs = 1500 points
+  enableFourOfKindBonus: boolean;   // Four of a kind = base * 2 (vs just base)
+  enableFiveOfKindBonus: boolean;   // Five of a kind = base * 3 (vs just base)
+  enableSixOfKindBonus: boolean;    // Six of a kind = base * 4 (vs just base)
+  enableSingleOnes: boolean;        // Single 1s = 100 points
+  enableSingleFives: boolean;       // Single 5s = 50 points
+  minimumScoreToBoard: number;      // Minimum points needed to get on board
 }
 
 /**
@@ -123,6 +141,7 @@ export interface GameConfig {
   playerCount: number;
   playerNames?: string[];
   seed?: number;  // For reproducible games
+  scoringRules?: ScoringRules;  // Optional custom scoring rules
 }
 
 /**
@@ -162,6 +181,9 @@ export interface DiceSelectionDecision {
 
   // Number of dice being kept
   diceKept: number;
+
+  // Optional explanation for debugging
+  reason?: string;
 }
 
 /**
@@ -220,4 +242,42 @@ export interface Strategy {
    * Optional: React to turn results (learning strategies)
    */
   onTurnComplete?(turnRecord: TurnRecord): void;
+}
+
+/**
+ * Context information for a pending human decision
+ */
+export interface HumanDecisionContext {
+  diceRolled: number[];
+  scoringCombinations: ScoringCombination[];
+  turnPoints: number;
+  diceRemaining: number;
+  playerScore: number;
+  opponentScores: number[];
+  farkleRisk: number;
+  expectedValue: number;
+}
+
+/**
+ * Pending human decision waiting for input
+ */
+export interface PendingHumanDecision {
+  decisionId: string;
+  playerId: string;
+  playerName: string;
+  strategyName: string;
+  type: 'dice' | 'continue';
+  context: HumanDecisionContext;
+  timestamp: Date;
+}
+
+/**
+ * Record of a human player's decision with full context
+ */
+export interface HumanDecisionRecord {
+  decisionId: string;
+  timestamp: Date;
+  context: HumanDecisionContext;
+  decision: DiceSelectionDecision | ContinueDecision;
+  gameStateBefore: GameState;
 }

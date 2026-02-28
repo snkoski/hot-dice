@@ -1,4 +1,5 @@
 import type { Strategy, StrategyContext, DiceSelectionDecision, ContinueDecision } from '../core/types';
+import { listPresetStrategies } from './composable/presets';
 
 /**
  * Create a simple threshold-based strategy
@@ -175,12 +176,20 @@ export const builtInStrategies = {
  * Get strategy by ID
  */
 export function getStrategy(id: string): Strategy | undefined {
-  return Object.values(builtInStrategies).find(s => s.id === id);
+  // Check built-in strategies first
+  const builtIn = Object.values(builtInStrategies).find(s => s.id === id);
+  if (builtIn) return builtIn;
+
+  // Then check composable presets
+  return listPresetStrategies().find(s => s.id === id);
 }
 
 /**
- * List all available strategies
+ * List all available strategies (built-in + composable presets)
  */
 export function listStrategies(): Strategy[] {
-  return Object.values(builtInStrategies);
+  return [
+    ...Object.values(builtInStrategies),
+    ...listPresetStrategies()
+  ];
 }

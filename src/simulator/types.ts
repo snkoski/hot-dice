@@ -45,8 +45,13 @@ export interface PlayerGameStats {
   turnsPlayed: number;
   rollsPlayed: number;
   farkles: number;
+  farkleDiceDistribution?: Record<number, number>; // Count of farkles by dice count
+  rollsByDiceCount?: Record<number, number>; // Count of all rolls by dice count
   maxTurnScore: number;
   won: boolean;
+  wasTie: boolean; // True if this was a tied game
+  totalPointsScored: number;
+  successfulTurns: number; // Turns where points were actually scored (not farkle, not 0)
 }
 
 /**
@@ -74,7 +79,10 @@ export interface StrategyStatistics {
   // Win statistics
   gamesPlayed: number;
   wins: number;
+  losses: number;
+  ties: number;
   winRate: number;
+  tieRate: number;
 
   // Score statistics
   averageFinalScore: number;
@@ -86,10 +94,17 @@ export interface StrategyStatistics {
   averageTurnsPerGame: number;
   averageRollsPerGame: number;
   averagePointsPerTurn: number;
+  averagePointsWhenScoring: number; // Average points per successful turn (excluding farkles)
+  averagePointsPerTurnIncludingFarkles: number; // Average points per turn (including 0s from farkles)
 
   // Risk metrics
   farkleRate: number;
   averageFarklesPerGame: number;
+  averageFarkleDiceCount?: number; // Average number of dice when farkle occurs
+  farkleDiceDistribution?: Record<number, number>; // Aggregated farkle distribution by dice count
+  luckScore?: number; // Luck metric: positive = lucky (fewer farkles than expected), negative = unlucky
+  totalExpectedFarkles?: number; // For cumulative luck tracking
+  totalActualFarkles?: number; // For cumulative luck tracking
 
   // Score distribution
   scoreDistribution: {
@@ -98,5 +113,44 @@ export interface StrategyStatistics {
     from7500to10000: number;
     from10000to12500: number;
     over12500: number;
+  };
+
+  // Win-specific statistics (excluding ties)
+  winStats?: {
+    averageScore: number;
+    averageTurns: number;
+    averageRolls: number;
+    averageFarkles: number;
+    farkleRate: number;
+    averageFarkleDiceCount?: number;
+    luckScore?: number;
+    averagePointsWhenScoring: number;
+    averagePointsPerTurn: number;
+  };
+
+  // Tie-specific statistics
+  tieStats?: {
+    averageScore: number;
+    averageTurns: number;
+    averageRolls: number;
+    averageFarkles: number;
+    farkleRate: number;
+    averageFarkleDiceCount?: number;
+    luckScore?: number;
+    averagePointsWhenScoring: number;
+    averagePointsPerTurn: number;
+  };
+
+  // Loss-specific statistics
+  lossStats?: {
+    averageScore: number;
+    averageTurns: number;
+    averageRolls: number;
+    averageFarkles: number;
+    farkleRate: number;
+    averageFarkleDiceCount?: number;
+    luckScore?: number;
+    averagePointsWhenScoring: number;
+    averagePointsPerTurn: number;
   };
 }

@@ -18,15 +18,19 @@ export class Game {
   private roller: DiceRoller;
   private scorer: ScoringEngine;
   private strategies: Map<string, Strategy>;
+  private baseSeed: number;
+  private currentRound: number;
 
   constructor(config: GameConfig, strategies: Strategy[]) {
     if (strategies.length !== config.playerCount) {
       throw new Error(`Expected ${config.playerCount} strategies, got ${strategies.length}`);
     }
 
-    this.roller = new DiceRoller(config.seed);
-    this.scorer = new ScoringEngine();
+    this.baseSeed = config.seed || Math.floor(Math.random() * 1000000);
+    this.roller = new DiceRoller(this.baseSeed);
+    this.scorer = new ScoringEngine(config.scoringRules);
     this.strategies = new Map();
+    this.currentRound = 0;
 
     // Initialize game state
     this.state = {
@@ -38,6 +42,7 @@ export class Game {
       minimumScoreToBoard: config.minimumScoreToBoard,
       isGameOver: false,
       winnerId: null,
+      winnerIds: [],
       turnHistory: []
     };
 
@@ -60,6 +65,12 @@ export class Game {
 
     const currentPlayer = this.state.players[this.state.currentPlayerIndex];
     const strategy = this.strategies.get(currentPlayer.id)!;
+
+    // Reset dice roller to the same seed for this round
+    // This ensures all players in the same round get the same dice rolls
+    const roundSeed = this.baseSeed + this.currentRound;
+    this.roller.reset(roundSeed);
+
     const turnMgr = new TurnManager(currentPlayer.id, this.state, this.roller, this.scorer);
 
     // Start the turn
@@ -71,6 +82,16 @@ export class Game {
       // Roll dice
       turnState = turnMgr.rollDice();
       rollCount++;
+
+      // Track rolls by dice count for luck calculation
+      if (turnState.lastRoll) {
+        const diceCount = turnState.lastRoll.length;
+        if (!currentPlayer.stats.rollsByDiceCount) {
+          currentPlayer.stats.rollsByDiceCount = {};
+        }
+        currentPlayer.stats.rollsByDiceCount[diceCount] =
+          (currentPlayer.stats.rollsByDiceCount[diceCount] || 0) + 1;
+      }
 
       if (turnState.isFarkle) {
         break;
@@ -106,6 +127,7 @@ export class Game {
       pointsScored: result.pointsAdded,
       finalScore: result.newScore,
       wasFarkle: turnState.isFarkle,
+      farkleDiceCount: turnState.isFarkle && turnState.lastRoll ? turnState.lastRoll.length : undefined,
       timestamp: new Date()
     };
 
@@ -114,6 +136,13 @@ export class Game {
     currentPlayer.stats.totalRolls += rollCount;
     if (turnState.isFarkle) {
       currentPlayer.stats.farkles++;
+      if (turnRecord.farkleDiceCount) {
+        if (!currentPlayer.stats.farkleDiceDistribution) {
+          currentPlayer.stats.farkleDiceDistribution = {};
+        }
+        currentPlayer.stats.farkleDiceDistribution[turnRecord.farkleDiceCount] =
+          (currentPlayer.stats.farkleDiceDistribution[turnRecord.farkleDiceCount] || 0) + 1;
+      }
     }
     if (turnRecord.pointsScored > currentPlayer.stats.maxTurnScore) {
       currentPlayer.stats.maxTurnScore = turnRecord.pointsScored;
@@ -130,7 +159,14 @@ export class Game {
       this.handleGameEnd();
     } else {
       // Move to next player
-      this.state.currentPlayerIndex = (this.state.currentPlayerIndex + 1) % this.state.players.length;
+      const nextPlayerIndex = (this.state.currentPlayerIndex + 1) % this.state.players.length;
+
+      // If we're wrapping back to player 0, increment the round
+      if (nextPlayerIndex === 0) {
+        this.currentRound++;
+      }
+
+      this.state.currentPlayerIndex = nextPlayerIndex;
     }
 
     return turnRecord;
@@ -271,6 +307,10 @@ export class Game {
     while (nextPlayerIndex !== playerWhoReachedTarget) {
       this.state.currentPlayerIndex = nextPlayerIndex;
 
+      // Reset dice roller to the same seed for this round
+      const roundSeed = this.baseSeed + this.currentRound;
+      this.roller.reset(roundSeed);
+
       const currentPlayer = this.state.players[this.state.currentPlayerIndex];
       const strategy = this.strategies.get(currentPlayer.id)!;
       const turnMgr = new TurnManager(currentPlayer.id, this.state, this.roller, this.scorer);
@@ -281,6 +321,16 @@ export class Game {
       while (turnState.canContinue && !turnState.isFarkle) {
         turnState = turnMgr.rollDice();
         rollCount++;
+
+        // Track rolls by dice count for luck calculation
+        if (turnState.lastRoll) {
+          const diceCount = turnState.lastRoll.length;
+          if (!currentPlayer.stats.rollsByDiceCount) {
+            currentPlayer.stats.rollsByDiceCount = {};
+          }
+          currentPlayer.stats.rollsByDiceCount[diceCount] =
+            (currentPlayer.stats.rollsByDiceCount[diceCount] || 0) + 1;
+        }
 
         if (turnState.isFarkle) {
           break;
@@ -308,6 +358,7 @@ export class Game {
         pointsScored: result.pointsAdded,
         finalScore: result.newScore,
         wasFarkle: turnState.isFarkle,
+        farkleDiceCount: turnState.isFarkle && turnState.lastRoll ? turnState.lastRoll.length : undefined,
         timestamp: new Date()
       };
 
@@ -315,6 +366,13 @@ export class Game {
       currentPlayer.stats.totalRolls += rollCount;
       if (turnState.isFarkle) {
         currentPlayer.stats.farkles++;
+        if (turnRecord.farkleDiceCount) {
+          if (!currentPlayer.stats.farkleDiceDistribution) {
+            currentPlayer.stats.farkleDiceDistribution = {};
+          }
+          currentPlayer.stats.farkleDiceDistribution[turnRecord.farkleDiceCount] =
+            (currentPlayer.stats.farkleDiceDistribution[turnRecord.farkleDiceCount] || 0) + 1;
+        }
       }
       if (turnRecord.pointsScored > currentPlayer.stats.maxTurnScore) {
         currentPlayer.stats.maxTurnScore = turnRecord.pointsScored;
@@ -326,13 +384,14 @@ export class Game {
       nextPlayerIndex = (nextPlayerIndex + 1) % this.state.players.length;
     }
 
-    // Determine winner (highest score)
-    const winner = this.state.players.reduce((max, player) =>
-      player.totalScore > max.totalScore ? player : max
-    );
+    // Determine winner(s) - find all players with the highest score
+    const maxScore = Math.max(...this.state.players.map(p => p.totalScore));
+    const winners = this.state.players.filter(p => p.totalScore === maxScore);
 
-    this.state.winnerId = winner.id;
-    winner.gamesWon++;
+    // Mark all winners
+    this.state.winnerIds = winners.map(w => w.id);
+    this.state.winnerId = winners[0].id; // Backward compatibility
+    winners.forEach(w => w.gamesWon++);
     this.state.isGameOver = true;
 
     // Call onGameEnd for all strategies

@@ -1,10 +1,30 @@
-import type { DiceRoll, DieValue, ScoringResult, ScoringCombination } from './types';
+import type { DiceRoll, DieValue, ScoringResult, ScoringCombination, ScoringRules } from './types';
 import { ScoreType } from './types';
+
+/**
+ * Default scoring rules (standard Farkle)
+ */
+const DEFAULT_SCORING_RULES: ScoringRules = {
+  enableStraight: true,
+  enableThreePairs: true,
+  enableFourOfKindBonus: true,
+  enableFiveOfKindBonus: true,
+  enableSixOfKindBonus: true,
+  enableSingleOnes: true,
+  enableSingleFives: true,
+  minimumScoreToBoard: 500
+};
 
 /**
  * Scoring engine for analyzing dice rolls
  */
 export class ScoringEngine {
+  private rules: ScoringRules;
+
+  constructor(rules?: ScoringRules) {
+    this.rules = rules || DEFAULT_SCORING_RULES;
+  }
+
   /**
    * Analyze a dice roll and return all scoring information
    * @param dice The dice to analyze
@@ -23,28 +43,32 @@ export class ScoringEngine {
     }
 
     // Check for special patterns first (straight, three pairs)
-    const straight = this.checkStraight(dice);
-    if (straight) {
-      return {
-        combinations: [straight],
-        totalPoints: straight.points,
-        scoringDiceCount: 6,
-        nonScoringDice: [],
-        isFarkle: false,
-        isHotDice: true
-      };
+    if (this.rules.enableStraight) {
+      const straight = this.checkStraight(dice);
+      if (straight) {
+        return {
+          combinations: [straight],
+          totalPoints: straight.points,
+          scoringDiceCount: 6,
+          nonScoringDice: [],
+          isFarkle: false,
+          isHotDice: true
+        };
+      }
     }
 
-    const threePairs = this.checkThreePairs(dice);
-    if (threePairs) {
-      return {
-        combinations: [threePairs],
-        totalPoints: threePairs.points,
-        scoringDiceCount: 6,
-        nonScoringDice: [],
-        isFarkle: false,
-        isHotDice: true
-      };
+    if (this.rules.enableThreePairs) {
+      const threePairs = this.checkThreePairs(dice);
+      if (threePairs) {
+        return {
+          combinations: [threePairs],
+          totalPoints: threePairs.points,
+          scoringDiceCount: 6,
+          nonScoringDice: [],
+          isFarkle: false,
+          isHotDice: true
+        };
+      }
     }
 
     // Check for n-of-a-kind and singles
@@ -124,17 +148,19 @@ export class ScoringEngine {
         if (combo) {
           combinations.push(combo);
         }
-      } else if (value === 1 || value === 5) {
+      } else {
         // Single 1s or 5s (only if not part of n-of-a-kind)
-        for (let i = 0; i < dice.length; i++) {
-          if (dice[i] === value && !used.has(i)) {
-            combinations.push({
-              type: value === 1 ? ScoreType.SINGLE_ONE : ScoreType.SINGLE_FIVE,
-              dice: [value],
-              points: value === 1 ? 100 : 50,
-              diceIndices: [i]
-            });
-            used.add(i);
+        if ((value === 1 && this.rules.enableSingleOnes) || (value === 5 && this.rules.enableSingleFives)) {
+          for (let i = 0; i < dice.length; i++) {
+            if (dice[i] === value && !used.has(i)) {
+              combinations.push({
+                type: value === 1 ? ScoreType.SINGLE_ONE : ScoreType.SINGLE_FIVE,
+                dice: [value],
+                points: value === 1 ? 100 : 50,
+                diceIndices: [i]
+              });
+              used.add(i);
+            }
           }
         }
       }
@@ -175,13 +201,13 @@ export class ScoringEngine {
       points = baseScore;
     } else if (count === 4) {
       scoreType = ScoreType.FOUR_OF_KIND;
-      points = baseScore * 2;
+      points = this.rules.enableFourOfKindBonus ? baseScore * 2 : baseScore;
     } else if (count === 5) {
       scoreType = ScoreType.FIVE_OF_KIND;
-      points = baseScore * 3;
+      points = this.rules.enableFiveOfKindBonus ? baseScore * 3 : baseScore;
     } else if (count === 6) {
       scoreType = ScoreType.SIX_OF_KIND;
-      points = baseScore * 4;
+      points = this.rules.enableSixOfKindBonus ? baseScore * 4 : baseScore;
     } else {
       return null;
     }
