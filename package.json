@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "build": "tsc",
+    "cursors": "node ../multi-cursor-library/packages/server/dist/cli.js --port 3001",
     "start": "tsx src/web/server.ts",
     "dev": "tsx watch src/web/server.ts",
     "test": "vitest",
@@ -23,6 +24,7 @@
     "@fastify/cors": "^11.2.0",
     "@fastify/static": "^9.0.0",
     "@fastify/websocket": "^11.2.0",
+    "@multicursor/client": "file:../multi-cursor-library/packages/client",
     "fastify": "^5.7.1",
     "seedrandom": "^3.0.5"
   },

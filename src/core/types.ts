@@ -142,6 +142,7 @@ export interface GameConfig {
   playerNames?: string[];
   seed?: number;  // For reproducible games
   scoringRules?: ScoringRules;  // Optional custom scoring rules
+  mirroredDice?: boolean;  // All players roll the same dice each round
 }
 
 /**

@@ -1692,10 +1692,13 @@ function clearHumanDecisions() {
 /**
  * Start an interactive game with human player
  */
+let currentMirroredDice = false;
+
 async function startInteractiveGame() {
   const strategyIds = selectedStrategyIds.filter(id => !id.startsWith('custom-'));
   const targetScore = parseInt(document.getElementById('targetScore').value);
   const minScore = parseInt(document.getElementById('minScore').value);
+  const mirroredDice = document.getElementById('mirroredDiceToggle').checked;
 
   try {
     const response = await fetch('/api/game/interactive/init', {
@@ -1705,7 +1708,8 @@ async function startInteractiveGame() {
         strategyIds,
         humanPlayerIndices: [0],  // Human is first player
         targetScore,
-        minimumScoreToBoard: minScore
+        minimumScoreToBoard: minScore,
+        mirroredDice
       })
     });
 
@@ -1717,6 +1721,7 @@ async function startInteractiveGame() {
 
     const data = await response.json();
     currentInteractiveGameId = data.gameId;
+    currentMirroredDice = data.mirroredDice ?? false;
     gameStepHistory = [data.currentStep];
     currentHistoryIndex = 0;
 
@@ -1761,8 +1766,12 @@ function displayHumanDecisionUI(step) {
                       title="${canScore ? 'Click to select' : 'This die cannot score'}">${diceFaces[die - 1]}</button>`;
     }).join('');
 
+    const mirroredBadge = currentMirroredDice
+      ? '<span style="display:inline-block; margin-left:8px; background:#e8f4fd; color:#2980b9; padding:2px 9px; border-radius:12px; font-size:0.75em; font-weight:600; vertical-align:middle;">🎯 Mirrored Dice</span>'
+      : '';
+
     decisionBox.innerHTML = `
-      <h4 style="margin-top: 0; color: #667eea;">🎲 Your Turn — Pick Dice to Keep</h4>
+      <h4 style="margin-top: 0; color: #667eea;">🎲 Your Turn — Pick Dice to Keep${mirroredBadge}</h4>
 
       <div style="display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; margin: 20px 0;" id="diceContainer">
         ${diceButtonsHTML}
@@ -1787,10 +1796,16 @@ function displayHumanDecisionUI(step) {
         </div>
       </div>
 
-      <button onclick="confirmDiceSelection()" id="confirmDiceBtn" disabled
-              style="width: 100%; padding: 15px; font-size: 1.1em; background: #667eea; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: bold; opacity: 0.5;">
-        ✓ Confirm Selection
-      </button>
+      <div style="display: flex; gap: 10px; margin-bottom: 0;">
+        <button onclick="selectAllScoringDice()"
+                style="flex: 1; padding: 12px; font-size: 1em; background: #f0f4ff; color: #667eea; border: 2px solid #667eea; border-radius: 8px; cursor: pointer; font-weight: bold;">
+          ✦ Select All Scoring
+        </button>
+        <button onclick="confirmDiceSelection()" id="confirmDiceBtn" disabled
+                style="flex: 2; padding: 12px; font-size: 1.1em; background: #667eea; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: bold; opacity: 0.5;">
+          ✓ Confirm Selection
+        </button>
+      </div>
     `;
   } else {
     displayContinueDecisionUI(humanDecision.context);
@@ -1815,12 +1830,44 @@ function toggleDie(index) {
 }
 
 /**
+ * Select all scoring dice at once
+ */
+function selectAllScoringDice() {
+  if (!humanDecisionState) return;
+  const combos = humanDecisionState.context.scoringCombinations;
+  const scoringDiceSet = new Set(combos.flatMap(c => c.diceIndices));
+
+  selectedDiceIndices = [...scoringDiceSet];
+
+  document.querySelectorAll('.die-btn').forEach(btn => {
+    const idx = parseInt(btn.dataset.index);
+    if (scoringDiceSet.has(idx)) {
+      btn.classList.add('selected');
+    }
+  });
+
+  updateDieSelectionDisplay();
+}
+
+/**
  * Given selected die indices, compute the best scoring combinations.
  * Greedily applies n-of-a-kind first, then singles.
  * Falls back to manual THREE_OF_KIND for 1s/5s when only smaller n-of-a-kind
  * options are present in the server list (e.g., 3 selected from FOUR_OF_KIND).
  */
 function computeScoreForSelectedDice(selectedIndices, scoringCombinations, diceRolled) {
+  // Check for whole-hand combinations (STRAIGHT, THREE_PAIRS) first.
+  // These cover all selected dice as a single indivisible unit.
+  if (selectedIndices.length > 0) {
+    const selectedSet = new Set(selectedIndices);
+    const wholeHand = scoringCombinations.find(c =>
+      (c.type === 'STRAIGHT' || c.type === 'THREE_PAIRS') &&
+      c.diceIndices.length === selectedIndices.length &&
+      c.diceIndices.every(i => selectedSet.has(i))
+    );
+    if (wholeHand) return [wholeHand];
+  }
+
   const byValue = {};
   for (const i of selectedIndices) {
     const v = diceRolled[i];
@@ -1898,6 +1945,15 @@ function updateDieSelectionDisplay() {
   const totalPoints = resultCombos.reduce((s, c) => s + c.points, 0);
   const diceLeft = totalDice - selectedDiceIndices.length;
 
+  if (resultCombos.length === 0) {
+    scoringDisplay.innerHTML = '<span style="color: #dc3545; font-size: 0.95em;">Selected dice don\'t form a scoring combination</span>';
+    selectedPointsEl.textContent = '0';
+    diceLeftEl.textContent = diceLeft === 0 ? '6 🔥' : diceLeft;
+    confirmBtn.disabled = true;
+    confirmBtn.style.opacity = '0.5';
+    return;
+  }
+
   const comboLabel = resultCombos.map(c => formatScoreType(c.type)).join(' + ');
   scoringDisplay.innerHTML = `
     <div style="font-weight: 600; color: #333; font-size: 1.05em;">${comboLabel}</div>
@@ -1950,9 +2006,17 @@ async function confirmDiceSelection() {
     gameStepHistory.push(data.step);
     currentHistoryIndex = gameStepHistory.length - 1;
 
-    // Display next step (should be continue decision)
-    displayStep(data.step);
-    updateInteractiveControls();
+    const showNext = () => {
+      displayStep(data.step);
+      updateInteractiveControls();
+    };
+
+    // Show AI summary if any AI turns were processed (unlikely here but handled for correctness)
+    if (data.skippedSteps && data.skippedSteps.length > 0) {
+      displayAiTurnSummary(data.skippedSteps, showNext);
+    } else {
+      showNext();
+    }
 
   } catch (error) {
     console.error('Failed to submit dice selection:', error);
@@ -2005,6 +2069,124 @@ function displayContinueDecisionUI(context) {
 }
 
 /**
+ * Show a turn-end notification (bank or farkle) then call onDone
+ */
+function showTurnEndNotification(type, points, newTotal, onDone) {
+  const decisionDiv = document.getElementById('decisionBox');
+  if (!decisionDiv) {
+    onDone();
+    return;
+  }
+
+  decisionDiv.classList.remove('hidden');
+
+  if (type === 'bank') {
+    decisionDiv.innerHTML = `
+      <div style="text-align: center; padding: 24px;">
+        <div style="font-size: 3em; margin-bottom: 10px;">🏦</div>
+        <div style="font-size: 1.8em; font-weight: bold; color: #28a745; margin-bottom: 8px;">Banked!</div>
+        <div style="font-size: 1.4em; color: #333;">+${points} points</div>
+        <div style="font-size: 1em; color: #666; margin-top: 8px;">New total: ${newTotal.toLocaleString()}</div>
+      </div>
+    `;
+  } else {
+    decisionDiv.innerHTML = `
+      <div style="text-align: center; padding: 24px;">
+        <div style="font-size: 3em; margin-bottom: 10px;">💥</div>
+        <div style="font-size: 1.8em; font-weight: bold; color: #dc3545; margin-bottom: 8px;">Farkle!</div>
+        <div style="font-size: 1.4em; color: #333;">Lost ${points} points</div>
+        <div style="font-size: 1em; color: #999; margin-top: 8px;">Turn over</div>
+      </div>
+    `;
+  }
+
+  setTimeout(onDone, 2200);
+}
+
+// Callback used by the "Your Turn" button inside the AI summary panel
+let _aiSummaryDone = null;
+function resumeFromAiSummary() {
+  if (_aiSummaryDone) {
+    const cb = _aiSummaryDone;
+    _aiSummaryDone = null;
+    cb();
+  }
+}
+
+/**
+ * Show a summary of AI turns that happened between human decisions.
+ * Filters out any steps that belong to human players.
+ * Calls onDone() when the user clicks "Your Turn".
+ */
+function displayAiTurnSummary(skippedSteps, onDone) {
+  const decisionDiv = document.getElementById('decisionBox');
+  if (!decisionDiv) { onDone(); return; }
+
+  // Only show steps from AI players
+  const aiSteps = skippedSteps.filter(s =>
+    !s.currentPlayerId || !s.currentPlayerId.startsWith('human')
+  );
+  if (aiSteps.length === 0) { onDone(); return; }
+
+  const diceFaces = ['⚀', '⚁', '⚂', '⚃', '⚄', '⚅'];
+
+  let html = '';
+  let inTurn = false;
+
+  for (const step of aiSteps) {
+    if (step.type === 'turn_start') {
+      if (inTurn) html += '</div>';
+      html += `
+        <div style="margin-bottom: 14px; background: #f8f9fa; border-radius: 8px; padding: 10px 12px; border-left: 3px solid #667eea;">
+          <div style="font-weight: bold; color: #667eea; margin-bottom: 6px; font-size: 0.95em; text-transform: uppercase; letter-spacing: 0.4px;">
+            ${step.currentPlayerName}
+          </div>`;
+      inTurn = true;
+
+    } else if (step.type === 'roll' && step.diceRolled) {
+      // Actual dice roll — show faces
+      const faces = step.diceRolled.map(d => diceFaces[d - 1]).join('');
+      html += `<div style="margin: 5px 0; font-size: 1.6em; letter-spacing: 2px;">${faces}</div>`;
+
+    } else if (step.type === 'roll' && step.keptCombinations) {
+      // Dice selection result — show what was kept
+      const comboText = step.keptCombinations
+        .map(c => `${formatScoreType(c.type)} (${c.points})`)
+        .join(', ');
+      html += `<div style="margin: 2px 0 6px; font-size: 0.88em; color: #555;">
+        → Kept: ${comboText} = <strong>+${step.keptPoints} pts</strong>
+        <span style="color: #999; margin-left: 6px;">(${step.diceRemaining} dice left)</span>
+      </div>`;
+
+    } else if (step.type === 'turn_complete') {
+      const isFarkle = step.message && step.message.toLowerCase().includes('farkle');
+      const color = isFarkle ? '#dc3545' : '#28a745';
+      const icon = isFarkle ? '💥' : '🏦';
+      html += `<div style="margin-top: 6px; font-size: 0.9em; font-weight: bold; color: ${color};">
+        ${icon} ${step.message}
+      </div>`;
+    }
+  }
+
+  if (inTurn) html += '</div>';
+
+  decisionDiv.classList.remove('hidden');
+  decisionDiv.innerHTML = `
+    <h4 style="margin-top: 0; color: #667eea; font-size: 1em;">While You Were Away...</h4>
+    <div style="max-height: 260px; overflow-y: auto; margin-bottom: 14px;">
+      ${html}
+    </div>
+    <button onclick="resumeFromAiSummary()"
+            style="width: 100%; padding: 13px; font-size: 1.05em; font-weight: bold;
+                   background: #667eea; color: white; border: none; border-radius: 8px; cursor: pointer;">
+      Your Turn →
+    </button>
+  `;
+
+  _aiSummaryDone = onDone;
+}
+
+/**
  * Submit continue/stop decision
  */
 async function submitContinueDecision(continueRolling) {
@@ -2012,6 +2194,9 @@ async function submitContinueDecision(continueRolling) {
     continue: continueRolling,
     reason: continueRolling ? 'Human chose to continue' : 'Human chose to stop'
   };
+
+  // Capture turn points before submitting so we can show a notification
+  const prevTurnPoints = humanDecisionState ? humanDecisionState.context.turnPoints : 0;
 
   try {
     const response = await fetch('/api/game/interactive/decision', {
@@ -2043,13 +2228,50 @@ async function submitContinueDecision(continueRolling) {
     gameStepHistory.push(data.step);
     currentHistoryIndex = gameStepHistory.length - 1;
 
-    // Display next step
-    displayStep(data.step);
-    updateInteractiveControls();
+    // Determine whether to show a turn-end notification
+    let notificationType = null;
+    let newTotal = 0;
 
-    // Clear state
-    humanDecisionState = null;
-    selectedDiceIndices = [];
+    if (!continueRolling) {
+      // User banked — always show
+      notificationType = 'bank';
+      const humanPlayer = data.step.gameState.players.find(p => p.id && p.id.startsWith('human'));
+      newTotal = humanPlayer ? humanPlayer.totalScore : 0;
+    } else {
+      // User rolled again — check if a farkle occurred (turn restarted with 0 points)
+      const nextCtx = data.step.humanDecisions && data.step.humanDecisions[0]
+        ? data.step.humanDecisions[0].context
+        : null;
+      if (nextCtx && nextCtx.turnPoints === 0 && prevTurnPoints > 0) {
+        notificationType = 'farkle';
+      }
+    }
+
+    const showNextStep = () => {
+      displayStep(data.step);
+      updateInteractiveControls();
+      // Only clear decision state if the next step doesn't require a new decision
+      // (displayHumanDecisionUI already sets humanDecisionState for the next decision)
+      if (data.step.type !== 'awaiting_human_decision') {
+        humanDecisionState = null;
+        selectedDiceIndices = [];
+      }
+    };
+
+    // Chain: [optional notification] → [optional AI summary] → next step
+    const proceed = () => {
+      if (data.skippedSteps && data.skippedSteps.length > 0) {
+        displayAiTurnSummary(data.skippedSteps, showNextStep);
+      } else {
+        showNextStep();
+      }
+    };
+
+    if (notificationType) {
+      showTurnEndNotification(notificationType, prevTurnPoints, newTotal, proceed);
+    } else {
+      proceed();
+    }
 
   } catch (error) {
     console.error('Failed to submit continue decision:', error);
@@ -2077,6 +2299,7 @@ function formatScoreType(type) {
  */
 function closeInteractiveGame() {
   currentInteractiveGameId = null;
+  currentMirroredDice = false;
   humanDecisionState = null;
   selectedDiceIndices = [];
   document.getElementById('interactiveGameSection').classList.add('hidden');

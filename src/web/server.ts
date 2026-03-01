@@ -4,6 +4,7 @@ import fastifyStatic from '@fastify/static';
 import fastifyWebsocket from '@fastify/websocket';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
+import { readFileSync } from 'fs';
 import { Simulator } from '../simulator/simulator';
 import { listStrategies, getStrategy } from '../strategies/built-in';
 import { getStrategyDetails } from '../strategies/composable/presets';
@@ -49,24 +50,18 @@ function getOrCreateCustomStrategy(customStrategyData: any): Strategy {
         '1.0.0'
       )
       .withDiceSelector(greedy())
-      .withContinueEvaluators(
-        thresholdBased(fixed(threshold), []),
-        minDiceRemaining(minDice)
-      )
+      .withContinueEvaluators(thresholdBased(fixed(threshold), []), minDiceRemaining(minDice))
       .withCombinationMode({ type: 'all' })
       .build();
   } else {
     // Simple threshold strategy
-    strategy = createThresholdStrategy(
-      fixed(threshold),
-      [],
-      greedy()
-    );
+    strategy = createThresholdStrategy(fixed(threshold), [], greedy());
 
     // Override metadata
     (strategy as any).id = id;
     (strategy as any).name = name || `Stop at ${threshold}`;
-    (strategy as any).description = description || `Always stops when turn points reach ${threshold}`;
+    (strategy as any).description =
+      description || `Always stops when turn points reach ${threshold}`;
   }
 
   // Cache it
@@ -94,6 +89,33 @@ await app.register(fastifyStatic, {
   prefix: '/'
 });
 
+// Serve multicursor client library from node_modules
+app.get('/node_modules/@multicursor/client/*', async (request, reply) => {
+  const filePath = request.url.replace('/node_modules/@multicursor/client', '');
+  const fullPath = join(__dirname, '../../node_modules/@multicursor/client', filePath);
+
+  try {
+    const content = readFileSync(fullPath);
+    const ext = filePath.split('.').pop();
+    const contentType =
+      ext === 'js'
+        ? 'application/javascript'
+        : ext === 'mjs'
+          ? 'application/javascript'
+          : ext === 'json'
+            ? 'application/json'
+            : ext === 'css'
+              ? 'text/css'
+              : ext === 'html'
+                ? 'text/html'
+                : 'application/octet-stream';
+
+    reply.type(contentType).send(content);
+  } catch (error: any) {
+    reply.code(404).send({ error: 'File not found' });
+  }
+});
+
 // API Routes
 
 /**
@@ -101,7 +123,7 @@ await app.register(fastifyStatic, {
  */
 app.get('/api/strategies', async (request, reply) => {
   const strategies = listStrategies();
-  return strategies.map(s => {
+  return strategies.map((s) => {
     const details = getStrategyDetails(s.id);
     return {
       id: s.id,
@@ -126,7 +148,14 @@ app.post<{
     seed?: number;
   };
 }>('/api/simulate', async (request, reply) => {
-  const { gameCount, strategyIds, strategies: customStrategies, targetScore = 10000, minimumScoreToBoard = 500, seed } = request.body;
+  const {
+    gameCount,
+    strategyIds,
+    strategies: customStrategies,
+    targetScore = 10000,
+    minimumScoreToBoard = 500,
+    seed
+  } = request.body;
 
   // Validate input
   if (!gameCount || gameCount < 1 || gameCount > 10000) {
@@ -137,7 +166,9 @@ app.post<{
   let strategies: Strategy[] = [];
 
   if (strategyIds && strategyIds.length > 0) {
-    const builtInStrategies = strategyIds.map(id => getStrategy(id)).filter(s => s !== undefined) as Strategy[];
+    const builtInStrategies = strategyIds
+      .map((id) => getStrategy(id))
+      .filter((s) => s !== undefined) as Strategy[];
     if (builtInStrategies.length !== strategyIds.length) {
       return reply.code(400).send({ error: 'Invalid strategy IDs' });
     }
@@ -145,7 +176,7 @@ app.post<{
   }
 
   if (customStrategies && customStrategies.length > 0) {
-    const customStrategyObjects = customStrategies.map(data => getOrCreateCustomStrategy(data));
+    const customStrategyObjects = customStrategies.map((data) => getOrCreateCustomStrategy(data));
     strategies = [...strategies, ...customStrategyObjects];
   }
 
@@ -180,13 +211,23 @@ app.register(async function (fastify) {
     socket.on('message', async (message: any) => {
       try {
         const data = JSON.parse(message.toString());
-        const { gameCount, strategyIds, strategies: customStrategies, targetScore = 10000, minimumScoreToBoard = 500, seed, scoringRules } = data;
+        const {
+          gameCount,
+          strategyIds,
+          strategies: customStrategies,
+          targetScore = 10000,
+          minimumScoreToBoard = 500,
+          seed,
+          scoringRules
+        } = data;
 
         // Get strategies (either from IDs or custom strategy objects)
         let strategies: Strategy[] = [];
 
         if (strategyIds && strategyIds.length > 0) {
-          const builtInStrategies = strategyIds.map((id: string) => getStrategy(id)).filter((s: any) => s !== undefined) as Strategy[];
+          const builtInStrategies = strategyIds
+            .map((id: string) => getStrategy(id))
+            .filter((s: any) => s !== undefined) as Strategy[];
           if (builtInStrategies.length !== strategyIds.length) {
             socket.send(JSON.stringify({ error: 'Invalid strategy IDs' }));
             return;
@@ -195,7 +236,9 @@ app.register(async function (fastify) {
         }
 
         if (customStrategies && customStrategies.length > 0) {
-          const customStrategyObjects = customStrategies.map((data: any) => getOrCreateCustomStrategy(data));
+          const customStrategyObjects = customStrategies.map((data: any) =>
+            getOrCreateCustomStrategy(data)
+          );
           strategies = [...strategies, ...customStrategyObjects];
         }
 
@@ -216,10 +259,12 @@ app.register(async function (fastify) {
           strategies: strategies as any[],
           seed,
           onProgress: (progress: SimulationProgress) => {
-            socket.send(JSON.stringify({
-              type: 'progress',
-              data: progress
-            }));
+            socket.send(
+              JSON.stringify({
+                type: 'progress',
+                data: progress
+              })
+            );
           }
         };
 
@@ -228,15 +273,19 @@ app.register(async function (fastify) {
         const results = await simulator.run();
 
         // Send final results
-        socket.send(JSON.stringify({
-          type: 'complete',
-          data: results
-        }));
+        socket.send(
+          JSON.stringify({
+            type: 'complete',
+            data: results
+          })
+        );
       } catch (error: any) {
-        socket.send(JSON.stringify({
-          type: 'error',
-          error: error.message
-        }));
+        socket.send(
+          JSON.stringify({
+            type: 'error',
+            error: error.message
+          })
+        );
       }
     });
   });
@@ -255,13 +304,22 @@ app.post<{
     scoringRules?: any;
   };
 }>('/api/game/init', async (request, reply) => {
-  const { strategyIds, strategies: customStrategies, targetScore = 10000, minimumScoreToBoard = 500, seed, scoringRules } = request.body;
+  const {
+    strategyIds,
+    strategies: customStrategies,
+    targetScore = 10000,
+    minimumScoreToBoard = 500,
+    seed,
+    scoringRules
+  } = request.body;
 
   // Get strategies (either from IDs or custom strategy objects)
   let strategies: Strategy[] = [];
 
   if (strategyIds && strategyIds.length > 0) {
-    const builtInStrategies = strategyIds.map(id => getStrategy(id)).filter(s => s !== undefined) as Strategy[];
+    const builtInStrategies = strategyIds
+      .map((id) => getStrategy(id))
+      .filter((s) => s !== undefined) as Strategy[];
     if (builtInStrategies.length !== strategyIds.length) {
       return reply.code(400).send({ error: 'Invalid strategy IDs' });
     }
@@ -269,7 +327,7 @@ app.post<{
   }
 
   if (customStrategies && customStrategies.length > 0) {
-    const customStrategyObjects = customStrategies.map(data => getOrCreateCustomStrategy(data));
+    const customStrategyObjects = customStrategies.map((data) => getOrCreateCustomStrategy(data));
     strategies = [...strategies, ...customStrategyObjects];
   }
 
@@ -363,6 +421,7 @@ app.post<{
     minimumScoreToBoard?: number;
     seed?: number;
     scoringRules?: any;
+    mirroredDice?: boolean;
   };
 }>('/api/game/interactive/init', async (request, reply) => {
   const {
@@ -371,7 +430,8 @@ app.post<{
     targetScore = 10000,
     minimumScoreToBoard = 500,
     seed,
-    scoringRules
+    scoringRules,
+    mirroredDice = false
   } = request.body;
 
   // Validate input
@@ -391,13 +451,14 @@ app.post<{
   }
 
   // Create human strategies
-  const humanStrategies: Strategy[] = humanPlayerIndices.map((index: number, i: number) =>
-    new HumanStrategy(
-      `human-${index}`,
-      `Human Player ${index + 1}`,
-      'Interactive human player',
-      '1.0.0'
-    )
+  const humanStrategies: Strategy[] = humanPlayerIndices.map(
+    (index: number, i: number) =>
+      new HumanStrategy(
+        `human-${index}`,
+        `Human Player ${index + 1}`,
+        'Interactive human player',
+        '1.0.0'
+      )
   );
 
   // Merge strategies in correct order
@@ -419,7 +480,8 @@ app.post<{
     targetScore,
     minimumScoreToBoard,
     seed,
-    scoringRules
+    scoringRules,
+    mirroredDice
   };
 
   // Create interactive game
@@ -440,6 +502,7 @@ app.post<{
   // Advance past the game_start step to the first human decision
   return {
     gameId,
+    mirroredDice,
     currentStep: game.advanceToDecisionPoint()
   };
 });
@@ -462,12 +525,13 @@ app.post<{
   }
 
   try {
-    const nextStep = await game.submitHumanDecision(decisionId, decision);
+    const { step, skippedSteps } = await game.submitHumanDecision(decisionId, decision);
 
     return {
-      step: nextStep,
+      step,
+      skippedSteps,
       stepNumber: game.getSteps().length - 1,
-      isGameOver: nextStep.gameState.isGameOver
+      isGameOver: step.gameState.isGameOver
     };
   } catch (error: any) {
     return reply.code(400).send({ error: error.message });
@@ -504,7 +568,7 @@ app.get('/api/health', async (request, reply) => {
 // Start server
 const start = async () => {
   try {
-    const port = process.env.PORT ? parseInt(process.env.PORT) : 3000;
+    const port = process.env.PORT ? parseInt(process.env.PORT) : 3003;
     await app.listen({ port, host: '0.0.0.0' });
     console.log(`\n🎲 Hot Dice server running at http://localhost:${port}`);
     console.log(`📊 API available at http://localhost:${port}/api`);

@@ -13,6 +13,7 @@ import type {
   GameState,
   PlayerState,
   Strategy,
+  StrategyContext,
   DiceSelectionDecision,
   ContinueDecision,
   HumanDecisionRecord,
@@ -37,6 +38,10 @@ export interface InteractiveGameStep {
   scoringCombinations?: ScoringCombination[];
   turnPoints?: number;
   diceRemaining?: number;
+
+  // AI dice selection result (populated on 'roll' steps after selection)
+  keptCombinations?: ScoringCombination[];
+  keptPoints?: number;
 }
 
 export class InteractiveStepGame {
@@ -51,6 +56,11 @@ export class InteractiveStepGame {
   private humanStrategies: Map<string, HumanStrategy> = new Map();
   private pendingHumanDecisions: Map<string, PendingHumanDecision> = new Map();
   private humanDecisionHistory: HumanDecisionRecord[] = [];
+
+  // Mirrored dice mode
+  private mirroredDice: boolean = false;
+  private baseSeed: number = 0;
+  private roundNumber: number = 0;
 
   // Current turn state
   private currentTurnManager: TurnManager | null = null;
@@ -68,6 +78,8 @@ export class InteractiveStepGame {
     }
 
     const seed = config.seed || Math.floor(Math.random() * 1000000);
+    this.baseSeed = seed;
+    this.mirroredDice = config.mirroredDice ?? false;
     this.roller = new DiceRoller(seed);
     this.scorer = new ScoringEngine(config.scoringRules);
     this.strategies = new Map();
@@ -179,6 +191,11 @@ export class InteractiveStepGame {
   private startNewTurn(): InteractiveGameStep {
     const currentPlayer = this.state.players[this.state.currentPlayerIndex];
     const strategy = this.strategies.get(currentPlayer.id)!;
+
+    // In mirrored dice mode, all players share the same dice sequence per round
+    if (this.mirroredDice) {
+      this.roller.reset(this.baseSeed + this.roundNumber);
+    }
 
     // Create turn manager
     this.currentTurnManager = new TurnManager(
@@ -325,20 +342,7 @@ export class InteractiveStepGame {
     const strategy = this.strategies.get(currentPlayer.id)!;
     const isHuman = this.humanPlayerIds.has(currentPlayer.id);
 
-    // Get strategy context (simplified for now)
-    const context: any = {
-      playerId: currentPlayer.id,
-      playerName: currentPlayer.name,
-      diceRolled: this.currentTurnState.lastRoll || [],
-      scoringCombinations: this.currentTurnState.lastScoringResult?.combinations || [],
-      turnPoints: this.currentTurnState.turnPoints,
-      diceRemaining: this.currentTurnState.diceRemaining,
-      playerScore: currentPlayer.totalScore,
-      opponentScores: this.state.players.filter(p => p.id !== currentPlayer.id).map(p => p.totalScore),
-      targetScore: this.state.targetScore,
-      minimumScoreToBoard: this.state.minimumScoreToBoard
-    };
-
+    const context = this.createStrategyContext(currentPlayer, this.currentTurnState);
     const diceDecision = strategy.selectDice(context);
     this.currentTurnState = this.currentTurnManager.selectDice(diceDecision.selectedCombinations);
     this.state.currentTurn = this.currentTurnState;
@@ -359,6 +363,8 @@ export class InteractiveStepGame {
       currentPlayerName: currentPlayer.name,
       turnPoints: this.currentTurnState.turnPoints,
       diceRemaining: this.currentTurnState.diceRemaining,
+      keptCombinations: diceDecision.selectedCombinations,
+      keptPoints: diceDecision.points,
       message: `${currentPlayer.name} selected dice, earned ${diceDecision.points} points`
     };
 
@@ -427,17 +433,7 @@ export class InteractiveStepGame {
     const currentPlayer = this.state.players[this.state.currentPlayerIndex];
     const strategy = this.strategies.get(currentPlayer.id)!;
 
-    const context: any = {
-      playerId: currentPlayer.id,
-      playerName: currentPlayer.name,
-      turnPoints: this.currentTurnState.turnPoints,
-      diceRemaining: this.currentTurnState.diceRemaining,
-      playerScore: currentPlayer.totalScore,
-      opponentScores: this.state.players.filter(p => p.id !== currentPlayer.id).map(p => p.totalScore),
-      targetScore: this.state.targetScore,
-      minimumScoreToBoard: this.state.minimumScoreToBoard
-    };
-
+    const context = this.createStrategyContext(currentPlayer, this.currentTurnState);
     const continueDecision = strategy.decideContinue(context);
     this.waitingForContinueDecision = false;
 
@@ -470,12 +466,14 @@ export class InteractiveStepGame {
   }
 
   /**
-   * Submit a human decision and advance the game
+   * Submit a human decision and advance the game.
+   * Returns the next step requiring human input (or game_end), plus any steps
+   * that were silently processed (AI turns) between the decision and that step.
    */
   async submitHumanDecision(
     decisionId: string,
     decision: DiceSelectionDecision | ContinueDecision
-  ): Promise<InteractiveGameStep> {
+  ): Promise<{ step: InteractiveGameStep; skippedSteps: InteractiveGameStep[] }> {
     const pending = this.pendingHumanDecisions.get(decisionId);
     if (!pending) {
       throw new Error(`Decision ${decisionId} not found`);
@@ -505,12 +503,36 @@ export class InteractiveStepGame {
     // Remove from pending
     this.pendingHumanDecisions.delete(decisionId);
 
+    // Capture how many steps exist before advancing so we can report what was skipped
+    const stepCountBefore = this.steps.length;
+
     // Advance through AI turns until the next human decision or game end
-    return this.advanceToDecisionPoint();
+    const step = this.advanceToDecisionPoint();
+
+    // All steps generated between now and the final step are "skipped" AI steps
+    const skippedSteps = this.steps.slice(stepCountBefore, this.steps.length - 1);
+
+    return { step, skippedSteps };
   }
 
   getHumanDecisionHistory(): HumanDecisionRecord[] {
     return this.humanDecisionHistory;
+  }
+
+  private createStrategyContext(player: PlayerState, turnState: any): StrategyContext {
+    const opponents = this.state.players.filter(p => p.id !== player.id);
+    const leadingOpponentScore = Math.max(...opponents.map(p => p.totalScore), 0);
+    const farkleRisk = this.calculateFarkleRisk(turnState.diceRemaining);
+    return {
+      gameState: this.cloneState(),
+      playerState: player,
+      turnState,
+      availableScoring: turnState.lastScoringResult!,
+      opponents,
+      leadingOpponentScore,
+      farkleRisk,
+      expectedValue: 0
+    };
   }
 
   /**
@@ -565,7 +587,11 @@ export class InteractiveStepGame {
     this.waitingForDiceSelection = false;
     this.waitingForContinueDecision = false;
 
-    this.state.currentPlayerIndex = (this.state.currentPlayerIndex + 1) % this.state.players.length;
+    const nextIndex = (this.state.currentPlayerIndex + 1) % this.state.players.length;
+    if (nextIndex === 0) {
+      this.roundNumber++;
+    }
+    this.state.currentPlayerIndex = nextIndex;
   }
 
   private checkGameOver(): boolean {
