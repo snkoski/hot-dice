@@ -1053,40 +1053,6 @@
       </div>
     </div>
 
-    <script src="app.js"></script>
-
-    <script type="importmap">
-      {
-        "imports": {
-          "@multicursor/client": "../node_modules/@multicursor/client/dist/index.js"
-        }
-      }
-    </script>
-
-    <script type="module">
-      import { initCursors } from '@multicursor/client';
-
-      const destroyCursors = initCursors({
-        serverUrl: 'wss://multi.tunnel.shawnkoski.com',
-        room: 'dice-room',
-
-        // Optional callbacks — remove if your API doesn't support them
-        onConnect: () => {
-          console.log('Multicursor connected');
-        },
-        onDisconnect: () => {
-          console.log('Multicursor disconnected — reconnecting...');
-        },
-        onUserJoin: () => {
-          console.log('User joined');
-        },
-        onUserLeave: () => {
-          console.log('User left');
-        }
-      });
-
-      // Clean up if the page is closed
-      window.addEventListener('beforeunload', destroyCursors);
-    </script>
+    <script type="module" src="/main.js"></script>
   </body>
 </html>

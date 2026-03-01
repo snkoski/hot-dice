@@ -4,7 +4,7 @@ import fastifyStatic from '@fastify/static';
 import fastifyWebsocket from '@fastify/websocket';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
-import { readFileSync } from 'fs';
+import { readFileSync, existsSync } from 'fs';
 import { Simulator } from '../simulator/simulator';
 import { listStrategies, getStrategy } from '../strategies/built-in';
 import { getStrategyDetails } from '../strategies/composable/presets';
@@ -83,37 +83,14 @@ await app.register(cors, {
 // Enable WebSocket
 await app.register(fastifyWebsocket);
 
-// Serve static files (for the frontend)
+// Serve static files — use Vite build output (dist) if it exists, else public/
+const distPath = join(__dirname, '../../dist');
+const publicPath = join(__dirname, '../../public');
+const staticRoot = existsSync(join(distPath, 'index.html')) ? distPath : publicPath;
+
 await app.register(fastifyStatic, {
-  root: join(__dirname, '../../public'),
+  root: staticRoot,
   prefix: '/'
-});
-
-// Serve multicursor client library from node_modules
-app.get('/node_modules/@multicursor/client/*', async (request, reply) => {
-  const filePath = request.url.replace('/node_modules/@multicursor/client', '');
-  const fullPath = join(__dirname, '../../node_modules/@multicursor/client', filePath);
-
-  try {
-    const content = readFileSync(fullPath);
-    const ext = filePath.split('.').pop();
-    const contentType =
-      ext === 'js'
-        ? 'application/javascript'
-        : ext === 'mjs'
-          ? 'application/javascript'
-          : ext === 'json'
-            ? 'application/json'
-            : ext === 'css'
-              ? 'text/css'
-              : ext === 'html'
-                ? 'text/html'
-                : 'application/octet-stream';
-
-    reply.type(contentType).send(content);
-  } catch (error: any) {
-    reply.code(404).send({ error: 'File not found' });
-  }
 });
 
 // API Routes
