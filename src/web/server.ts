@@ -280,9 +280,14 @@ app.register(async function (fastify) {
     const backend = new WebSocket(backendUrl);
 
     backend.on('open', () => {
-      clientSocket.on('message', (msg: Buffer) => backend.send(msg));
+      clientSocket.on('message', (msg: Buffer, isBinary?: boolean) =>
+        backend.send(msg, { binary: isBinary ?? false })
+      );
     });
-    backend.on('message', (data: Buffer) => clientSocket.send(data));
+    // Multi-mouse sends JSON (text); must forward as text so browser receives string not Blob
+    backend.on('message', (data: Buffer, isBinary?: boolean) =>
+      clientSocket.send(data, { binary: isBinary ?? false })
+    );
     backend.on('close', () => clientSocket.close());
     backend.on('error', () => clientSocket.close());
     clientSocket.on('close', () => backend.close());
