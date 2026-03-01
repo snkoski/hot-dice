@@ -2,6 +2,7 @@ import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import fastifyStatic from '@fastify/static';
 import fastifyWebsocket from '@fastify/websocket';
+import WebSocket from 'ws';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import { readFileSync, existsSync } from 'fs';
@@ -265,6 +266,26 @@ app.register(async function (fastify) {
         );
       }
     });
+  });
+});
+
+/**
+ * WebSocket proxy for multi-mouse — forwards to local multi-mouse server.
+ * Use this when tunneling so the client connects to the same origin (one tunnel).
+ */
+app.register(async function (fastify) {
+  fastify.get('/ws/cursors', { websocket: true }, (clientSocket, req) => {
+    const query = req.url?.split('?')[1] ?? '';
+    const backendUrl = `ws://127.0.0.1:3001${query ? `?${query}` : ''}`;
+    const backend = new WebSocket(backendUrl);
+
+    backend.on('open', () => {
+      clientSocket.on('message', (msg: Buffer) => backend.send(msg));
+    });
+    backend.on('message', (data: Buffer) => clientSocket.send(data));
+    backend.on('close', () => clientSocket.close());
+    backend.on('error', () => clientSocket.close());
+    clientSocket.on('close', () => backend.close());
   });
 });
 
