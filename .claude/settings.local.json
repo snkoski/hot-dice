@@ -19,7 +19,8 @@
       "Bash(python3:*)",
       "Bash(node test-fair-dice.mjs:*)",
       "Bash(find:*)",
-      "Bash(npm run:*)"
+      "Bash(npm run:*)",
+      "Bash(node:*)"
     ],
     "deny": [],
     "ask": []

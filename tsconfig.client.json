@@ -1,0 +1,16 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "jsx": "react-jsx",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "types": ["vite/client"],
+    "noEmit": true
+  },
+  "include": [
+    "src/client/**/*",
+    "src/core/types.ts",
+    "src/simulator/types.ts",
+    "src/strategies/strategy-hash.ts"
+  ],
+  "exclude": ["node_modules", "dist", "tests"]
+}

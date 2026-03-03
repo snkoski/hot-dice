@@ -1,8 +1,10 @@
 import { defineConfig } from 'vite';
+import react from '@vitejs/plugin-react';
 import { resolve } from 'path';
 
 export default defineConfig({
-  root: resolve(__dirname, 'public'),
+  root: resolve(__dirname, 'src/client'),
+  plugins: [react()],
   build: {
     outDir: resolve(__dirname, 'dist'),
     emptyOutDir: true,
@@ -12,7 +14,6 @@ export default defineConfig({
     proxy: {
       '/api': 'http://localhost:3000',
       '/ws': { target: 'ws://localhost:3000', ws: true },
-      '/node_modules': 'http://localhost:3000',
     },
   },
 });

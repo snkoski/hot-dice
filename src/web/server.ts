@@ -84,13 +84,17 @@ await app.register(cors, {
 // Enable WebSocket
 await app.register(fastifyWebsocket);
 
-// Serve static files — use Vite build output (dist) if it exists, else public/
+// Serve static files — require Vite build output (dist). Fail fast if missing.
 const distPath = join(__dirname, '../../dist');
-const publicPath = join(__dirname, '../../public');
-const staticRoot = existsSync(join(distPath, 'index.html')) ? distPath : publicPath;
+const distIndexPath = join(distPath, 'index.html');
+if (!existsSync(distIndexPath)) {
+  throw new Error(
+    'Build required — run pnpm build. The dist/ folder is missing or empty.'
+  );
+}
 
 await app.register(fastifyStatic, {
-  root: staticRoot,
+  root: distPath,
   prefix: '/'
 });
 
@@ -571,7 +575,7 @@ app.get('/api/health', async (request, reply) => {
 // Start server
 const start = async () => {
   try {
-    const port = process.env.PORT ? parseInt(process.env.PORT) : 3003;
+    const port = process.env.PORT ? parseInt(process.env.PORT) : 3000;
     await app.listen({ port, host: '0.0.0.0' });
     console.log(`\n🎲 Hot Dice server running at http://localhost:${port}`);
     console.log(`📊 API available at http://localhost:${port}/api`);
