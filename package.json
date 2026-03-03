@@ -27,7 +27,7 @@
     "@fastify/cors": "^11.2.0",
     "@fastify/static": "^9.0.0",
     "@fastify/websocket": "^11.2.0",
-    "@multi-mouse/client": "file:../multi-mouse/packages/client",
+    "@multi-mouse/client": "file:/Users/skoski/Development/multi-mouse/packages/client",
     "clsx": "^2.1.1",
     "fastify": "^5.7.1",
     "react": "^19.2.4",

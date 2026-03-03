@@ -1,35 +1,36 @@
-import { type ReactNode } from 'react';
-import clsx from 'clsx';
+import { useEffect, type ReactNode } from 'react';
 import './shared.css';
 
 interface ModalProps {
-  isOpen: boolean;
+  open: boolean;
   onClose: () => void;
-  title?: string;
   children: ReactNode;
-  className?: string;
-  maxWidth?: number;
+  maxWidth?: string;
 }
 
-export function Modal({ isOpen, onClose, title, children, className, maxWidth = 700 }: ModalProps) {
-  if (!isOpen) return null;
+export function Modal({ open, onClose, children, maxWidth = '700px' }: ModalProps) {
+  useEffect(() => {
+    if (open) {
+      document.body.style.overflow = 'hidden';
+      return () => { document.body.style.overflow = ''; };
+    }
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [open, onClose]);
+
+  if (!open) return null;
 
   return (
-    <div
-      className="modal-overlay"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
-    >
-      <div
-        className={clsx('modal', className)}
-        onClick={(e) => e.stopPropagation()}
-        style={maxWidth ? { maxWidth } : undefined}
-      >
-        <button className="modal-close" onClick={onClose} type="button" aria-label="Close">
-          &times;
-        </button>
-        {title && <h2>{title}</h2>}
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal" style={{ maxWidth }} onClick={(e) => e.stopPropagation()}>
+        <button className="modal-close" onClick={onClose}>&times;</button>
         {children}
       </div>
     </div>

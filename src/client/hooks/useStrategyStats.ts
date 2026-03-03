@@ -1,65 +1,57 @@
-import { useState, useCallback } from 'react';
-import {
-  generateStrategyHash,
-  createInitialStats,
-  updateStrategyStats,
-  calculateDerivedStats,
-} from '../lib/strategyHash';
+import { useCallback } from 'react';
 import type { StrategyStats } from '../types/stats';
+import { createInitialStats, updateStrategyStats as updateStats, calculateDerivedStats } from '../lib/strategyHash';
 
 const STATS_STORAGE_KEY = 'hot-dice-strategy-stats';
-const STORAGE_VERSION = 1;
 
-interface StoredStats {
+interface VersionedData {
   version: number;
   data: Record<string, StrategyStats>;
 }
 
-function loadFromStorage(): Record<string, StrategyStats> {
+function loadRaw(): Record<string, StrategyStats> {
   try {
     const raw = localStorage.getItem(STATS_STORAGE_KEY);
     if (!raw) return {};
-
     const parsed = JSON.parse(raw);
-
-    if (parsed.version === undefined) {
-      return migrateV0ToV1(parsed);
+    if (parsed && typeof parsed.version === 'number') {
+      return (parsed as VersionedData).data;
     }
-
-    if (parsed.version === STORAGE_VERSION && parsed.data) {
-      return parsed.data;
-    }
-
-    return {};
-  } catch (e) {
-    console.error('Failed to load strategy stats:', e);
+    return parsed as Record<string, StrategyStats>;
+  } catch {
     return {};
   }
 }
 
-function migrateV0ToV1(raw: unknown): Record<string, StrategyStats> {
-  if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
-    return raw as Record<string, StrategyStats>;
-  }
-  return {};
-}
-
-function saveToStorage(data: Record<string, StrategyStats>) {
-  try {
-    const envelope: StoredStats = { version: STORAGE_VERSION, data };
-    localStorage.setItem(STATS_STORAGE_KEY, JSON.stringify(envelope));
-  } catch (e) {
-    console.error('Failed to save strategy stats:', e);
-  }
+function save(data: Record<string, StrategyStats>) {
+  const envelope: VersionedData = { version: 1, data };
+  localStorage.setItem(STATS_STORAGE_KEY, JSON.stringify(envelope));
 }
 
 export function useStrategyStats() {
-  const [stats, setStats] = useState<Record<string, StrategyStats>>(loadFromStorage);
+  const loadAll = useCallback((): Record<string, StrategyStats> => loadRaw(), []);
 
-  const mergeResults = useCallback(
+  const loadAllDerived = useCallback((): StrategyStats[] => {
+    return Object.values(loadRaw()).map(calculateDerivedStats);
+  }, []);
+
+  const getOrCreate = useCallback(
+    (hash: string, name: string, description: string): StrategyStats => {
+      const all = loadRaw();
+      if (!all[hash]) {
+        all[hash] = createInitialStats(hash, name, description);
+        save(all);
+      }
+      return all[hash];
+    },
+    [],
+  );
+
+  const update = useCallback(
     (
-      strategy: { id: string; name: string; description: string; details?: unknown; threshold?: number; type?: string; minDice?: number },
-      simulationResults: {
+      hash: string,
+      results: {
+        name?: string;
         gamesPlayed: number;
         wins: number;
         totalTurns: number;
@@ -71,33 +63,21 @@ export function useStrategyStats() {
         totalFarkleEvents?: number;
         totalExpectedFarkles?: number;
         totalActualFarkles?: number;
-      }
-    ) => {
-      const hash = generateStrategyHash(strategy as any, { components: strategy.details });
-      setStats((prev) => {
-        const all = { ...prev };
-        const existing = all[hash] ?? createInitialStats(hash, strategy.name, strategy.description);
-        const updated = updateStrategyStats(existing, simulationResults);
-        all[hash] = calculateDerivedStats(updated);
-        saveToStorage(all);
-        return all;
-      });
+      },
+    ): StrategyStats => {
+      const all = loadRaw();
+      const existing = all[hash] ?? createInitialStats(hash, results.name ?? 'Unknown', '');
+      if (results.name) existing.name = results.name;
+      all[hash] = updateStats(existing, results);
+      save(all);
+      return calculateDerivedStats(all[hash]);
     },
-    []
-  );
-
-  const getStatsForHash = useCallback(
-    (hash: string): StrategyStats | undefined => {
-      const s = stats[hash];
-      return s ? calculateDerivedStats(s) : undefined;
-    },
-    [stats]
+    [],
   );
 
   const clearAll = useCallback(() => {
-    setStats({});
-    saveToStorage({});
+    localStorage.removeItem(STATS_STORAGE_KEY);
   }, []);
 
-  return { stats, mergeResults, getStatsForHash, clearAll };
+  return { loadAll, loadAllDerived, getOrCreate, update, clearAll };
 }

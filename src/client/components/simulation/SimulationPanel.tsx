@@ -1,185 +1,170 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { ScoringRulesConfig } from './ScoringRulesConfig';
-import { SimulationProgressDisplay } from './SimulationProgress';
+import { SimulationProgress as SimProgress } from './SimulationProgress';
 import { SimulationResults } from './SimulationResults';
 import { useSimulationWebSocket } from '../../hooks/useSimulationWebSocket';
 import { useStrategyStats } from '../../hooks/useStrategyStats';
-import { generateStrategyHash, calculateDerivedStats } from '../../lib/strategyHash';
+import { generateStrategyHash } from '../../lib/strategyHash';
 import type { ScoringRules } from '../../types/game';
-import type { CustomStrategyData } from '../strategies/StrategyPanel';
-import type { StrategyInfo } from '../strategies/StrategyCard';
-import './simulation.css';
-
-const DEFAULT_SCORING_RULES: ScoringRules = {
-  enableStraight: true,
-  enableThreePairs: true,
-  enableFourOfKindBonus: true,
-  enableFiveOfKindBonus: true,
-  enableSixOfKindBonus: true,
-  enableSingleOnes: true,
-  enableSingleFives: true,
-  minimumScoreToBoard: 0,
-};
+import type { SimulationProgress as ProgressType, SimulationResults as ResultsType, StrategyStatistics } from '../../types/simulator';
+import type { StrategyStats } from '../../types/stats';
+import type { StrategyInfo, CustomStrategy } from '../../App';
 
 interface SimulationPanelProps {
   selectedStrategyIds: string[];
-  customStrategies: CustomStrategyData[];
-  availableStrategies: StrategyInfo[];
-  canRun: boolean;
-  targetScore: number;
-  setTargetScore: (v: number) => void;
-  minScore: number;
-  setMinScore: (v: number) => void;
-  scoringRules: ScoringRules;
-  setScoringRules: (v: ScoringRules) => void;
+  allStrategies: (StrategyInfo | CustomStrategy)[];
+  customStrategies: CustomStrategy[];
+  defaultScoringRules: ScoringRules;
 }
 
 export function SimulationPanel({
   selectedStrategyIds,
+  allStrategies,
   customStrategies,
-  availableStrategies,
-  canRun,
-  targetScore,
-  setTargetScore,
-  minScore,
-  setMinScore,
-  scoringRules,
-  setScoringRules,
+  defaultScoringRules,
 }: SimulationPanelProps) {
   const [gameCount, setGameCount] = useState(100);
+  const [targetScore, setTargetScore] = useState(10000);
+  const [minScore, setMinScore] = useState(0);
+  const [scoringRules, setScoringRules] = useState<ScoringRules>(defaultScoringRules);
+  const [progress, setProgress] = useState<ProgressType | null>(null);
+  const [results, setResults] = useState<StrategyStatistics[] | null>(null);
+  const [cumulativeMap, setCumulativeMap] = useState<Map<string, StrategyStats>>(new Map());
+  const [running, setRunning] = useState(false);
+  const resultsRef = useRef<HTMLDivElement>(null);
 
-  const { run, progress, results, error, isRunning } = useSimulationWebSocket();
-  const { mergeResults, getStatsForHash } = useStrategyStats();
+  const { update: updateStats } = useStrategyStats();
 
-  useEffect(() => {
-    if (!results) return;
-    const allStrategies = [...availableStrategies, ...customStrategies];
-    for (const s of results.strategyStats) {
-      const strategy = allStrategies.find((x) => x.id === s.strategyId);
-      if (!strategy) continue;
-      const strategyForHash = { ...strategy, details: 'details' in strategy ? strategy.details : undefined };
-      const totalTurns = Math.round(s.averageTurnsPerGame * s.gamesPlayed);
-      const totalPoints = Math.round(s.averagePointsPerTurnIncludingFarkles * totalTurns);
-      const totalSuccessfulTurns =
-        s.averagePointsWhenScoring > 0 ? Math.round(totalPoints / s.averagePointsWhenScoring) : 0;
-      const totalFarkles = Math.round(s.averageFarklesPerGame * s.gamesPlayed);
-      mergeResults(strategyForHash as any, {
-        gamesPlayed: s.gamesPlayed,
-        wins: s.wins,
-        totalTurns,
-        totalRolls: Math.round(s.averageRollsPerGame * s.gamesPlayed),
-        totalFarkles,
-        totalPoints,
-        totalSuccessfulTurns,
-        totalFarkleDice: s.averageFarkleDiceCount
-          ? Math.round(s.averageFarkleDiceCount * totalFarkles)
-          : undefined,
-        totalFarkleEvents: s.averageFarkleDiceCount ? totalFarkles : undefined,
-        totalExpectedFarkles: s.totalExpectedFarkles,
-        totalActualFarkles: s.totalActualFarkles,
+  const handleProgress = useCallback((p: ProgressType) => setProgress(p), []);
+
+  const handleComplete = useCallback(
+    (data: ResultsType) => {
+      setRunning(false);
+      setProgress(null);
+
+      const newMap = new Map<string, StrategyStats>();
+
+      data.strategyStats.forEach((stats) => {
+        const strategy = allStrategies.find((s) => s.id === stats.strategyId);
+        if (!strategy) return;
+
+        const hash = generateStrategyHash(strategy as any);
+        const totalTurns = Math.round(stats.averageTurnsPerGame * stats.gamesPlayed);
+        const totalPoints = Math.round(stats.averagePointsPerTurnIncludingFarkles * totalTurns);
+        const totalSuccessfulTurns =
+          stats.averagePointsWhenScoring > 0
+            ? Math.round(totalPoints / stats.averagePointsWhenScoring)
+            : 0;
+        const totalFarkles = Math.round(stats.averageFarklesPerGame * stats.gamesPlayed);
+
+        const cumulative = updateStats(hash, {
+          name: stats.strategyName,
+          gamesPlayed: stats.gamesPlayed,
+          wins: stats.wins,
+          totalTurns,
+          totalRolls: Math.round(stats.averageRollsPerGame * stats.gamesPlayed),
+          totalFarkles,
+          totalPoints,
+          totalSuccessfulTurns,
+          totalFarkleDice: stats.averageFarkleDiceCount
+            ? Math.round(stats.averageFarkleDiceCount * totalFarkles)
+            : undefined,
+          totalFarkleEvents: stats.averageFarkleDiceCount ? totalFarkles : undefined,
+          totalExpectedFarkles: stats.totalExpectedFarkles,
+          totalActualFarkles: stats.totalActualFarkles,
+        });
+        newMap.set(stats.strategyId, cumulative);
       });
-    }
-  }, [results, availableStrategies, customStrategies, mergeResults]);
 
-  const handleRun = useCallback(() => {
+      setCumulativeMap(newMap);
+      setResults(data.strategyStats);
+
+      setTimeout(() => resultsRef.current?.scrollIntoView({ behavior: 'smooth' }), 100);
+    },
+    [allStrategies, updateStats],
+  );
+
+  const handleError = useCallback((msg: string) => {
+    setRunning(false);
+    setProgress(null);
+    alert('Simulation failed: ' + msg);
+  }, []);
+
+  const { start } = useSimulationWebSocket(handleProgress, handleComplete, handleError);
+
+  const runSimulation = () => {
     const builtInIds = selectedStrategyIds.filter((id) => !id.startsWith('custom-'));
     const customData = selectedStrategyIds
       .filter((id) => id.startsWith('custom-'))
       .map((id) => customStrategies.find((s) => s.id === id))
-      .filter((s): s is CustomStrategyData => s !== undefined);
+      .filter(Boolean);
 
-    run({
+    setRunning(true);
+    setResults(null);
+    start({
       gameCount,
       strategyIds: builtInIds,
-      customStrategies: customData,
+      strategies: customData,
       targetScore,
       minimumScoreToBoard: minScore,
-      scoringRules: { ...scoringRules, minimumScoreToBoard: minScore },
+      scoringRules,
     });
-  }, [
-    selectedStrategyIds,
-    customStrategies,
-    gameCount,
-    targetScore,
-    minScore,
-    scoringRules,
-    run,
-  ]);
-
-  const enrichedResults = results?.strategyStats.map((s) => {
-    const strategy =
-      availableStrategies.find((x) => x.id === s.strategyId) ??
-      customStrategies.find((x) => x.id === s.strategyId);
-    if (!strategy) return { ...s, hash: null, cumulativeStats: null };
-    const strategyForHash = { ...strategy, details: 'details' in strategy ? strategy.details : undefined };
-    const hash = generateStrategyHash(strategyForHash as any, { components: strategyForHash.details });
-    const cumulativeStats = getStatsForHash(hash);
-    return {
-      ...s,
-      hash,
-      cumulativeStats: cumulativeStats ? calculateDerivedStats(cumulativeStats) : null,
-    };
-  });
+  };
 
   return (
-    <div className="card">
-      <h2 className="section-title">2. Configure Simulation</h2>
-      <div className="controls">
-        <div className="control-group">
-          <label htmlFor="gameCount">Number of Games</label>
-          <input
-            type="number"
-            id="gameCount"
-            value={gameCount}
-            onChange={(e) => setGameCount(parseInt(e.target.value, 10) || 100)}
-            min={1}
-            max={10000}
-          />
+    <>
+      <div className="card">
+        <h2 className="section-title">2. Configure Simulation</h2>
+        <div className="controls">
+          <div className="control-group">
+            <label>Number of Games</label>
+            <input
+              type="number"
+              value={gameCount}
+              onChange={(e) => setGameCount(parseInt(e.target.value) || 0)}
+              min={1}
+              max={10000}
+            />
+          </div>
+          <div className="control-group">
+            <label>Target Score</label>
+            <input
+              type="number"
+              value={targetScore}
+              onChange={(e) => setTargetScore(parseInt(e.target.value) || 0)}
+              min={1000}
+              step={1000}
+            />
+          </div>
+          <div className="control-group">
+            <label>Minimum to Board</label>
+            <input
+              type="number"
+              value={minScore}
+              onChange={(e) => setMinScore(parseInt(e.target.value) || 0)}
+              min={0}
+              step={100}
+            />
+          </div>
         </div>
-        <div className="control-group">
-          <label htmlFor="targetScore">Target Score</label>
-          <input
-            type="number"
-            id="targetScore"
-            value={targetScore}
-            onChange={(e) => setTargetScore(parseInt(e.target.value, 10) || 10000)}
-            min={1000}
-            step={1000}
-          />
-        </div>
-        <div className="control-group">
-          <label htmlFor="minScore">Minimum to Board</label>
-          <input
-            type="number"
-            id="minScore"
-            value={minScore}
-            onChange={(e) => setMinScore(parseInt(e.target.value, 10) || 0)}
-            min={0}
-            step={100}
-          />
-        </div>
+
+        <ScoringRulesConfig rules={scoringRules} onChange={setScoringRules} />
+
+        <button
+          onClick={runSimulation}
+          disabled={selectedStrategyIds.length < 1 || running}
+        >
+          {running ? 'Running...' : 'Run Simulation'}
+        </button>
       </div>
 
-      <ScoringRulesConfig rules={scoringRules} onChange={setScoringRules} />
+      {running && <SimProgress progress={progress} />}
 
-      <button onClick={handleRun} disabled={!canRun || isRunning}>
-        Run Simulation
-      </button>
-
-      {error && (
-        <div style={{ marginTop: 16, padding: 12, background: '#fee2e2', borderRadius: 8, color: '#991b1b' }}>
-          {error}
-        </div>
-      )}
-
-      {progress && <SimulationProgressDisplay progress={progress} />}
-
-      {results && enrichedResults && (
-        <div className="card" style={{ marginTop: 20 }}>
-          <h2 className="section-title">Results</h2>
-          <SimulationResults strategyStats={enrichedResults} />
-        </div>
-      )}
-    </div>
+      <div ref={resultsRef}>
+        {results && (
+          <SimulationResults strategyStats={results} cumulativeStatsMap={cumulativeMap} />
+        )}
+      </div>
+    </>
   );
 }

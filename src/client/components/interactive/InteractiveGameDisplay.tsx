@@ -1,355 +1,245 @@
-import { useReducer, useCallback, useState, useEffect } from 'react';
-import { PlayerScoresDisplay } from './PlayerScoresDisplay';
-import { DiceSelectionUI } from './DiceSelectionUI';
-import { ContinueDecisionUI } from './ContinueDecisionUI';
-import { AiSummaryOverlay } from './AiSummaryOverlay';
+import { useReducer, useCallback } from 'react';
+import { interactiveReducer, INITIAL_STATE } from './interactiveReducer';
+import { HumanDecisionUI } from './HumanDecisionUI';
 import { TurnEndNotification } from './TurnEndNotification';
-import type { InteractiveGameStep, PendingHumanDecision } from '../../types/stepGame';
-import type { HumanDecisionRecord } from '../../hooks/useHumanDecisions';
-import clsx from 'clsx';
+import { AiTurnSummary } from './AiTurnSummary';
+import { computeScoreForSelectedDice } from '../../lib/scoreComputer';
+import { useHumanDecisions } from '../../hooks/useHumanDecisions';
+import type { GameState } from '../../types/game';
 import './interactive.css';
-
-type OverlayPhase = 'ai_summary' | 'turn_end_notification' | 'error' | null;
-
-interface InteractiveState {
-  stepHistory: InteractiveGameStep[];
-  currentIndex: number;
-  overlayPhase: OverlayPhase;
-  overlayData: {
-    skippedSteps?: InteractiveGameStep[];
-    notificationType?: 'bank' | 'farkle';
-    points?: number;
-    newTotal?: number;
-  };
-  errorMessage: string | null;
-}
-
-type Action =
-  | { type: 'INIT'; step: InteractiveGameStep }
-  | { type: 'ADD_STEP'; step: InteractiveGameStep }
-  | { type: 'SHOW_AI_SUMMARY'; skippedSteps: InteractiveGameStep[] }
-  | { type: 'SHOW_TURN_END'; notificationType: 'bank' | 'farkle'; points: number; newTotal?: number; skippedSteps?: InteractiveGameStep[] }
-  | { type: 'CLEAR_OVERLAY' }
-  | { type: 'SET_ERROR'; message: string }
-  | { type: 'PREV_STEP' }
-  | { type: 'NEXT_STEP' };
-
-function reducer(state: InteractiveState, action: Action): InteractiveState {
-  switch (action.type) {
-    case 'INIT':
-      return {
-        ...state,
-        stepHistory: [action.step],
-        currentIndex: 0,
-        overlayPhase: null,
-        overlayData: {},
-        errorMessage: null,
-      };
-    case 'ADD_STEP':
-      return {
-        ...state,
-        stepHistory: [...state.stepHistory, action.step],
-        currentIndex: state.stepHistory.length,
-        overlayPhase: null,
-        overlayData: {},
-      };
-    case 'SHOW_AI_SUMMARY':
-      return {
-        ...state,
-        overlayPhase: 'ai_summary',
-        overlayData: { skippedSteps: action.skippedSteps },
-      };
-    case 'SHOW_TURN_END':
-      return {
-        ...state,
-        overlayPhase: 'turn_end_notification',
-        overlayData: {
-          notificationType: action.notificationType,
-          points: action.points,
-          newTotal: action.newTotal,
-          skippedSteps: action.skippedSteps,
-        },
-      };
-    case 'CLEAR_OVERLAY':
-      return {
-        ...state,
-        overlayPhase: null,
-        overlayData: {},
-      };
-    case 'SET_ERROR':
-      return {
-        ...state,
-        overlayPhase: 'error',
-        errorMessage: action.message,
-      };
-    case 'PREV_STEP':
-      return state.currentIndex > 0
-        ? { ...state, currentIndex: state.currentIndex - 1 }
-        : state;
-    case 'NEXT_STEP':
-      return state.currentIndex < state.stepHistory.length - 1
-        ? { ...state, currentIndex: state.currentIndex + 1 }
-        : state;
-    default:
-      return state;
-  }
-}
-
-const initialState: InteractiveState = {
-  stepHistory: [],
-  currentIndex: 0,
-  overlayPhase: null,
-  overlayData: {},
-  errorMessage: null,
-};
 
 interface InteractiveGameDisplayProps {
   gameId: string;
-  initialStep: unknown;
   mirroredDice: boolean;
+  initialStep: any;
   onClose: () => void;
-  addDecision: (record: Omit<HumanDecisionRecord, 'id'>) => string;
 }
 
-export function InteractiveGameDisplay({
-  gameId,
-  initialStep,
-  mirroredDice,
-  onClose,
-  addDecision,
-}: InteractiveGameDisplayProps) {
-  const [state, dispatch] = useReducer(reducer, initialState);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-
-  useEffect(() => {
-    if (initialStep) {
-      dispatch({ type: 'INIT', step: initialStep as InteractiveGameStep });
-    }
-  }, [initialStep]);
-
-  const currentStep = state.stepHistory[state.currentIndex] ?? null;
-  const humanDecision = currentStep?.humanDecisions?.[0];
-
-  const handleDiceSubmit = useCallback(
-    async (decisionId: string, decision: { selectedCombinations: unknown[]; points: number }) => {
-      setIsSubmitting(true);
-      try {
-        const res = await fetch('/api/game/interactive/decision', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ gameId, decisionId, decision }),
-        });
-        if (!res.ok) {
-          const err = await res.json();
-          throw new Error(err.error || 'Failed to submit');
-        }
-        const data = await res.json();
-        dispatch({ type: 'ADD_STEP', step: data.step });
-        if (data.skippedSteps?.length > 0) {
-          dispatch({ type: 'SHOW_AI_SUMMARY', skippedSteps: data.skippedSteps });
-        }
-      } catch (err) {
-        dispatch({
-          type: 'SET_ERROR',
-          message: err instanceof Error ? err.message : 'Failed to submit decision',
-        });
-      } finally {
-        setIsSubmitting(false);
-      }
-    },
-    [gameId]
-  );
-
-  const handleContinueSubmit = useCallback(
-    async (decisionId: string, continueRolling: boolean) => {
-      const prevTurnPoints = humanDecision?.context?.turnPoints ?? 0;
-
-      setIsSubmitting(true);
-      try {
-        const res = await fetch('/api/game/interactive/decision', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            gameId,
-            decisionId,
-            decision: {
-              continue: continueRolling,
-              reason: continueRolling ? 'Human chose to continue' : 'Human chose to stop',
-            },
-          }),
-        });
-        if (!res.ok) {
-          const err = await res.json();
-          throw new Error(err.error || 'Failed to submit');
-        }
-        const data = await res.json();
-
-        if (!continueRolling && humanDecision?.context) {
-          addDecision({
-            timestamp: new Date().toISOString(),
-            gameId,
-            diceRolled: humanDecision.context.diceRolled,
-            diceRemaining: humanDecision.context.diceRemaining,
-            turnPoints: humanDecision.context.turnPoints,
-            playerScore: humanDecision.context.playerScore,
-            opponentScores: humanDecision.context.opponentScores,
-            farkleRisk: humanDecision.context.farkleRisk,
-            availableCombinations: humanDecision.context.scoringCombinations,
-            continue: false,
-            reason: 'Human chose to stop',
-          });
-        }
-
-        dispatch({ type: 'ADD_STEP', step: data.step });
-
-        const humanPlayer = data.step.gameState.players.find(
-          (p: { id: string }) => p.id?.startsWith('human')
+function PlayerScoresDisplay({ gameState }: { gameState: GameState }) {
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 15 }}>
+      {gameState.players.map((player) => {
+        const isCurrent = player.id === gameState.players[gameState.currentPlayerIndex]?.id;
+        return (
+          <div
+            key={player.id}
+            style={{
+              background: isCurrent ? 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' : '#f8f9fa',
+              color: isCurrent ? 'white' : '#333',
+              padding: 15, borderRadius: 8, textAlign: 'center',
+            }}
+          >
+            <div style={{ fontWeight: 'bold', marginBottom: 8 }}>{player.name}</div>
+            <div style={{ fontSize: '2em', fontWeight: 'bold' }}>{player.totalScore}</div>
+            <div style={{ fontSize: '0.85em', opacity: 0.8, marginTop: 5 }}>
+              {player.isOnBoard ? '✓ On Board' : 'Not on board'}
+            </div>
+          </div>
         );
-        const newTotal = humanPlayer?.totalScore ?? 0;
+      })}
+    </div>
+  );
+}
 
-        if (!continueRolling) {
-          dispatch({
-            type: 'SHOW_TURN_END',
-            notificationType: 'bank',
-            points: prevTurnPoints,
-            newTotal,
-            skippedSteps: data.skippedSteps,
-          });
-        } else {
-          const nextCtx = data.step.humanDecisions?.[0]?.context;
-          if (nextCtx?.turnPoints === 0 && prevTurnPoints > 0) {
-            dispatch({
-              type: 'SHOW_TURN_END',
-              notificationType: 'farkle',
-              points: prevTurnPoints,
-              skippedSteps: data.skippedSteps,
-            });
-          } else if (data.skippedSteps?.length > 0) {
-            dispatch({ type: 'SHOW_AI_SUMMARY', skippedSteps: data.skippedSteps });
-          }
-        }
-      } catch (err) {
-        dispatch({
-          type: 'SET_ERROR',
-          message: err instanceof Error ? err.message : 'Failed to submit decision',
+export function InteractiveGameDisplay({ gameId, mirroredDice, initialStep, onClose }: InteractiveGameDisplayProps) {
+  const [state, dispatch] = useReducer(interactiveReducer, {
+    ...INITIAL_STATE,
+    gameId,
+    mirroredDice,
+    history: [initialStep],
+    historyIndex: 0,
+    current: initialStep.type === 'game_end'
+      ? { phase: 'game_over', finalStep: initialStep }
+      : initialStep.type === 'awaiting_human_decision' && initialStep.humanDecisions?.[0]?.type === 'dice'
+        ? { phase: 'awaiting_dice_selection', step: initialStep, selectedIndices: [] }
+        : initialStep.type === 'awaiting_human_decision'
+          ? { phase: 'awaiting_continue', step: initialStep }
+          : { phase: 'idle' },
+  });
+
+  const { saveDecision } = useHumanDecisions();
+
+  const currentStep = state.history[state.historyIndex];
+  const gameState: GameState | null = currentStep?.gameState ?? null;
+
+  const submitDecision = useCallback(
+    async (decisionId: string, decision: any) => {
+      dispatch({ type: 'SUBMIT_START' });
+      try {
+        const res = await fetch('/api/game/interactive/decision', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ gameId: state.gameId, decisionId, decision }),
         });
-      } finally {
-        setIsSubmitting(false);
+        if (!res.ok) {
+          const err = await res.json();
+          throw new Error(err.error);
+        }
+        return await res.json();
+      } catch (e: any) {
+        dispatch({ type: 'ERROR', message: e.message });
+        dispatch({ type: 'SUBMIT_END' });
+        return null;
       }
     },
-    [gameId, humanDecision, addDecision]
+    [state.gameId],
   );
 
-  const handleAiSummaryDone = useCallback(() => {
-    dispatch({ type: 'CLEAR_OVERLAY' });
-  }, []);
+  const handleConfirmDice = useCallback(async () => {
+    if (state.current.phase !== 'awaiting_dice_selection') return;
+    const step = state.current.step;
+    const hd = step.humanDecisions[0];
+    const selectedCombos = computeScoreForSelectedDice(
+      state.current.selectedIndices,
+      hd.context.scoringCombinations,
+      hd.context.diceRolled,
+    );
+    const totalPoints = selectedCombos.reduce((s, c) => s + c.points, 0);
+    const decision = {
+      selectedCombinations: selectedCombos,
+      points: totalPoints,
+      diceKept: state.current.selectedIndices.length,
+      reason: 'Human dice selection',
+    };
 
-  const handleTurnEndDone = useCallback((skippedSteps?: InteractiveGameStep[]) => {
-    if (skippedSteps?.length) {
-      dispatch({ type: 'SHOW_AI_SUMMARY', skippedSteps });
-    } else {
-      dispatch({ type: 'CLEAR_OVERLAY' });
+    const data = await submitDecision(hd.decisionId, decision);
+    if (data) {
+      dispatch({ type: 'DICE_RESPONSE', step: data.step, skippedSteps: data.skippedSteps ?? [] });
     }
-  }, []);
+  }, [state.current, submitDecision]);
 
-  const handleErrorDismiss = useCallback(() => {
-    dispatch({ type: 'CLEAR_OVERLAY' });
-  }, []);
+  const handleContinueDecision = useCallback(
+    async (continueRolling: boolean) => {
+      if (state.current.phase !== 'awaiting_continue') return;
+      const step = state.current.step;
+      const hd = step.humanDecisions[0];
+      const prevTurnPoints = hd.context.turnPoints;
 
-  const handlePrevStep = useCallback(() => {
-    dispatch({ type: 'PREV_STEP' });
-  }, []);
+      const decision = {
+        continue: continueRolling,
+        reason: continueRolling ? 'Human chose to continue' : 'Human chose to stop',
+      };
 
-  if (!currentStep) return null;
+      saveDecision({
+        timestamp: new Date().toISOString(),
+        gameId: state.gameId!,
+        diceRolled: hd.context.diceRolled,
+        diceRemaining: hd.context.diceRemaining,
+        turnPoints: hd.context.turnPoints,
+        playerScore: hd.context.playerScore,
+        opponentScores: hd.context.opponentScores,
+        farkleRisk: hd.context.farkleRisk,
+        availableCombinations: hd.context.scoringCombinations,
+        continue: continueRolling,
+        reason: decision.reason,
+      });
+
+      const data = await submitDecision(hd.decisionId, decision);
+      if (data) {
+        dispatch({
+          type: 'CONTINUE_RESPONSE',
+          step: data.step,
+          skippedSteps: data.skippedSteps ?? [],
+          prevTurnPoints,
+          didContinue: continueRolling,
+        });
+      }
+    },
+    [state.current, state.gameId, submitDecision, saveDecision],
+  );
+
+  const handleClose = useCallback(() => {
+    dispatch({ type: 'CLOSE' });
+    onClose();
+  }, [onClose]);
 
   return (
-    <>
-      <div className="interactive-game-header">
-        <h2 className="section-title" style={{ margin: 0 }}>
-          🎮 Interactive Game
-        </h2>
-        <button className="interactive-close-btn" onClick={onClose} type="button">
+    <div className="card">
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+        <h2 className="section-title" style={{ margin: 0 }}>🎮 Interactive Game</h2>
+        <button onClick={handleClose} style={{ padding: '8px 20px', background: '#6c757d', width: 'auto' }}>
           ✕ Close
         </button>
       </div>
 
-      <PlayerScoresDisplay gameState={currentStep.gameState} />
+      {gameState && <PlayerScoresDisplay gameState={gameState} />}
 
-      <div className="interactive-message">{currentStep.message ?? ''}</div>
+      <div style={{ textAlign: 'center', padding: 15, background: '#f8f9fa', borderRadius: 8, margin: '20px 0' }}>
+        {currentStep?.message || ''}
+      </div>
 
-      {state.overlayPhase === 'ai_summary' && state.overlayData.skippedSteps && (
-        <AiSummaryOverlay
-          skippedSteps={state.overlayData.skippedSteps}
-          onDone={handleAiSummaryDone}
-        />
-      )}
+      <div style={{ background: '#f8f9fa', borderRadius: 12, padding: 20, margin: '20px 0' }}>
+        {state.current.phase === 'awaiting_dice_selection' && (
+          <HumanDecisionUI
+            step={state.current.step}
+            selectedIndices={state.current.selectedIndices}
+            mirroredDice={state.mirroredDice}
+            isSubmitting={state.isSubmitting}
+            onToggleDie={(idx) => dispatch({ type: 'DICE_TOGGLED', index: idx })}
+            onSelectAllDice={(indices) => dispatch({ type: 'DICE_ALL_SELECTED', indices })}
+            onConfirmDice={handleConfirmDice}
+            onContinueDecision={handleContinueDecision}
+          />
+        )}
 
-      {state.overlayPhase === 'turn_end_notification' && state.overlayData.notificationType && (
-        <TurnEndNotification
-          type={state.overlayData.notificationType}
-          points={state.overlayData.points ?? 0}
-          newTotal={state.overlayData.newTotal}
-          skippedSteps={state.overlayData.skippedSteps}
-          onDone={handleTurnEndDone}
-        />
-      )}
+        {state.current.phase === 'awaiting_continue' && (
+          <HumanDecisionUI
+            step={state.current.step}
+            selectedIndices={[]}
+            mirroredDice={state.mirroredDice}
+            isSubmitting={state.isSubmitting}
+            onToggleDie={() => {}}
+            onSelectAllDice={() => {}}
+            onConfirmDice={() => {}}
+            onContinueDecision={handleContinueDecision}
+          />
+        )}
 
-      {state.overlayPhase === 'error' && state.errorMessage && (
-        <div className="interactive-error-overlay">
-          <p>{state.errorMessage}</p>
-          <button onClick={handleErrorDismiss} type="button">
-            Dismiss
-          </button>
-        </div>
-      )}
+        {state.current.phase === 'turn_end_notification' && (
+          <TurnEndNotification
+            type={state.current.notificationType}
+            points={state.current.points}
+            newTotal={state.current.newTotal}
+            onDone={() => dispatch({ type: 'NOTIFICATION_DONE' })}
+          />
+        )}
 
-      {currentStep.type === 'awaiting_human_decision' && humanDecision && (
-        <div id="decisionBox" className="decision-box">
-          {humanDecision.type === 'dice' ? (
-            <DiceSelectionUI
-              humanDecision={humanDecision}
-              mirroredDice={mirroredDice}
-              onSubmit={handleDiceSubmit}
-              isSubmitting={isSubmitting}
-            />
-          ) : (
-            <ContinueDecisionUI
-              context={humanDecision.context}
-              onSubmit={handleContinueSubmit}
-              decisionId={humanDecision.decisionId}
-              isSubmitting={isSubmitting}
-            />
-          )}
-        </div>
-      )}
+        {state.current.phase === 'ai_summary' && (
+          <AiTurnSummary
+            skippedSteps={state.current.skippedSteps}
+            onDone={() => dispatch({ type: 'AI_SUMMARY_DONE' })}
+          />
+        )}
 
-      {currentStep.type === 'game_end' && (
-        <div id="decisionBox" className="decision-box">
-          <h4 style={{ color: '#667eea', marginTop: 0 }}>🏆 Game Over!</h4>
-          <p style={{ fontSize: '1.1em', color: '#333' }}>{currentStep.message}</p>
-        </div>
-      )}
+        {state.current.phase === 'game_over' && (
+          <div style={{ textAlign: 'center', padding: 24 }}>
+            <h4 style={{ color: '#667eea', marginTop: 0 }}>🏆 Game Over!</h4>
+            <p style={{ fontSize: '1.1em', color: '#333' }}>{state.current.finalStep.message}</p>
+          </div>
+        )}
 
-      <div className="interactive-step-nav">
+        {state.current.phase === 'error' && (
+          <div style={{ textAlign: 'center', padding: 24, color: '#dc3545' }}>
+            <p>Error: {state.current.message}</p>
+          </div>
+        )}
+      </div>
+
+      <div style={{ display: 'flex', justifyContent: 'center', gap: 10, marginTop: 20 }}>
         <button
-          onClick={handlePrevStep}
-          disabled={state.currentIndex === 0}
-          type="button"
-          className="interactive-nav-prev"
+          onClick={() => dispatch({ type: 'NAVIGATE_BACK' })}
+          disabled={state.historyIndex === 0}
+          style={{ background: '#6c757d', width: 'auto', padding: '10px 20px' }}
         >
           ← Previous
         </button>
-        <span className="interactive-step-counter">
-          Step {state.currentIndex + 1} of {state.stepHistory.length}
+        <span style={{ padding: '10px 20px', background: '#f8f9fa', borderRadius: 6, fontWeight: 'bold' }}>
+          Step {state.historyIndex + 1} / {state.history.length}
         </span>
-        <button
-          type="button"
-          disabled
-          className="interactive-nav-next"
-        >
+        <button disabled style={{ background: '#28a745', width: 'auto', padding: '10px 20px' }}>
           Next →
         </button>
       </div>
-    </>
+    </div>
   );
 }

@@ -1,7 +1,8 @@
-import { Component, type ErrorInfo, type ReactNode } from 'react';
+import { Component, type ReactNode } from 'react';
 
 interface Props {
   children: ReactNode;
+  fallback?: ReactNode;
 }
 
 interface State {
@@ -10,41 +11,33 @@ interface State {
 }
 
 export class ErrorBoundary extends Component<Props, State> {
-  constructor(props: Props) {
-    super(props);
-    this.state = { hasError: false, error: null };
-  }
+  state: State = { hasError: false, error: null };
 
   static getDerivedStateFromError(error: Error): State {
     return { hasError: true, error };
   }
 
-  componentDidCatch(error: Error, errorInfo: ErrorInfo) {
-    console.error('ErrorBoundary caught:', error, errorInfo);
+  componentDidCatch(error: Error, info: React.ErrorInfo) {
+    console.error('ErrorBoundary caught:', error, info.componentStack);
   }
 
   render() {
-    if (this.state.hasError && this.state.error) {
+    if (this.state.hasError) {
       return (
-        <div className="container" style={{ padding: '40px 20px' }}>
-          <div className="card">
-            <h2 className="section-title">Something went wrong</h2>
-            <p style={{ marginBottom: 16, color: '#666' }}>
-              A component crashed. Check the console for details.
-            </p>
-            <pre
-              style={{
-                background: '#f5f5f5',
-                padding: 16,
-                borderRadius: 8,
-                overflow: 'auto',
-                fontSize: 14,
-              }}
-            >
-              {this.state.error.message}
+        this.props.fallback ?? (
+          <div style={{ padding: 40, textAlign: 'center', color: '#dc3545' }}>
+            <h2>Something went wrong</h2>
+            <pre style={{ fontSize: '0.85em', color: '#666', whiteSpace: 'pre-wrap' }}>
+              {this.state.error?.message}
             </pre>
+            <button
+              onClick={() => this.setState({ hasError: false, error: null })}
+              style={{ marginTop: 20, padding: '10px 24px', cursor: 'pointer' }}
+            >
+              Try Again
+            </button>
           </div>
-        </div>
+        )
       );
     }
     return this.props.children;

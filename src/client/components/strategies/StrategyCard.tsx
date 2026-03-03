@@ -1,81 +1,56 @@
 import clsx from 'clsx';
 import './strategies.css';
 
-export interface StrategyInfo {
+interface StrategyCardProps {
   id: string;
   name: string;
   description: string;
-  details?: {
-    diceSelector?: { name: string; description: string };
-    thresholdCalculator?: { name: string; description: string };
-    modifiers?: Array<{ name: string; description: string }>;
-    evaluators?: Array<{ name: string; description: string }>;
-    combinationMode?: string;
-  };
-}
-
-interface StrategyCardProps {
-  strategy: StrategyInfo;
   selected: boolean;
-  isCustom: boolean;
-  onToggle: () => void;
-  onInfo?: () => void;
-  onRemove?: () => void;
+  isCustom?: boolean;
+  hasDetails?: boolean;
+  onToggle: (id: string) => void;
+  onShowDetails?: (id: string) => void;
+  onRemove?: (id: string) => void;
 }
 
 export function StrategyCard({
-  strategy,
+  id,
+  name,
+  description,
   selected,
   isCustom,
+  hasDetails,
   onToggle,
-  onInfo,
+  onShowDetails,
   onRemove,
 }: StrategyCardProps) {
   return (
     <div
       className={clsx('strategy-card', { selected, custom: isCustom })}
-      onClick={onToggle}
-      role="button"
-      tabIndex={0}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault();
-          onToggle();
-        }
-      }}
+      onClick={() => onToggle(id)}
     >
       <div className="strategy-header">
-        <h3>{strategy.name}</h3>
-        {isCustom && onRemove ? (
+        <h3>{name}</h3>
+        {isCustom && onRemove && (
           <button
             className="remove-btn"
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              onRemove();
-            }}
+            onClick={(e) => { e.stopPropagation(); onRemove(id); }}
             title="Remove this custom strategy"
           >
             ✕
           </button>
-        ) : (
-          strategy.details &&
-          onInfo && (
-            <button
-              className="info-btn"
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                onInfo();
-              }}
-              title="Show strategy details"
-            >
-              ℹ️
-            </button>
-          )
+        )}
+        {hasDetails && onShowDetails && (
+          <button
+            className="info-btn"
+            onClick={(e) => { e.stopPropagation(); onShowDetails(id); }}
+            title="Show strategy details"
+          >
+            ℹ️
+          </button>
         )}
       </div>
-      <p>{strategy.description}</p>
+      <p>{description}</p>
     </div>
   );
 }

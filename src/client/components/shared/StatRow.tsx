@@ -1,16 +1,14 @@
-import type { ReactNode } from 'react';
-import './shared.css';
-
 interface StatRowProps {
   label: string;
-  value: string | number | ReactNode;
+  value: string | number;
+  valueStyle?: React.CSSProperties;
 }
 
-export function StatRow({ label, value }: StatRowProps) {
+export function StatRow({ label, value, valueStyle }: StatRowProps) {
   return (
     <div className="stat-row">
       <span className="stat-label">{label}</span>
-      <span className="stat-value">{value}</span>
+      <span className="stat-value" style={valueStyle}>{value}</span>
     </div>
   );
 }

@@ -4,7 +4,9 @@
     "jsx": "react-jsx",
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "types": ["vite/client"],
-    "noEmit": true
+    "declaration": false,
+    "declarationMap": false,
+    "outDir": "./dist"
   },
   "include": [
     "src/client/**/*",
@@ -12,5 +14,5 @@
     "src/simulator/types.ts",
     "src/strategies/strategy-hash.ts"
   ],
-  "exclude": ["node_modules", "dist", "tests"]
+  "exclude": ["node_modules", "dist"]
 }

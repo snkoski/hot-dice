@@ -1,7 +1,3 @@
-/**
- * Approximate farkle probability by dice count (1-6).
- * Based on combinatorial analysis of scoring dice.
- */
 const FARKLE_RISKS: Record<number, number> = {
   1: 0.667,
   2: 0.444,

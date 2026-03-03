@@ -1,78 +1,92 @@
-import { useEffect, useRef, useState } from 'react';
-import { initCursors } from '@multi-mouse/client';
-
-function getServerUrl(): string {
-  const urlParams = new URLSearchParams(typeof window !== 'undefined' ? window.location.search : '');
-  const override = urlParams.get('multimouse');
-  if (override) return override;
-  if (typeof window === 'undefined') return 'ws://localhost:3001';
-  const { hostname, protocol } = window.location;
-  if (hostname === 'localhost' || hostname === '127.0.0.1') {
-    return 'ws://localhost:3001';
-  }
-  const wsProtocol = protocol === 'https:' ? 'wss:' : 'ws:';
-  return `${wsProtocol}//${window.location.host}/ws/cursors`;
-}
+import { useEffect, useRef } from 'react';
 
 export function useMultiMouse() {
-  const [status, setStatus] = useState<{ connected: boolean; label: string }>({
-    connected: false,
-    label: 'Cursors connecting…',
-  });
   const destroyRef = useRef<(() => void) | null>(null);
-  const connectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const initializedRef = useRef(false);
 
   useEffect(() => {
-    const serverUrl = getServerUrl();
-    console.log('[MultiMouse] Connecting to:', serverUrl);
+    if (initializedRef.current) return;
+    initializedRef.current = true;
 
-    connectTimeoutRef.current = setTimeout(() => {
-      setStatus((s) => (s.label === 'Cursors connecting…' ? { connected: false, label: 'Cursors timeout — check server' } : s));
-    }, 15_000);
+    let statusEl: HTMLDivElement | null = null;
 
-    destroyRef.current = initCursors({
-      serverUrl,
-      room: 'dice-room',
-      onConnect: () => {
-        if (connectTimeoutRef.current) {
-          clearTimeout(connectTimeoutRef.current);
-          connectTimeoutRef.current = null;
-        }
-        setStatus({ connected: true, label: 'Cursors connected' });
-        console.log('MultiMouse connected to', serverUrl);
-      },
-      onDisconnect: (code, reason) => {
-        setStatus({ connected: false, label: `Cursors disconnected (${code ?? '?'})` });
-        console.log('MultiMouse disconnected — reconnecting...', { code, reason });
-      },
-      onError: () => {
-        if (connectTimeoutRef.current) {
-          clearTimeout(connectTimeoutRef.current);
-          connectTimeoutRef.current = null;
-        }
-        setStatus({ connected: false, label: 'Cursors connection failed' });
-        console.warn('MultiMouse WebSocket error');
-      },
-      onUserJoin: () => console.log('User joined'),
-      onUserLeave: () => console.log('User left'),
-    });
+    const init = async () => {
+      try {
+        const { initCursors } = await import('@multi-mouse/client');
 
-    return () => {
-      if (connectTimeoutRef.current) clearTimeout(connectTimeoutRef.current);
-      if (destroyRef.current) {
-        destroyRef.current();
-        destroyRef.current = null;
+        const urlParams = new URLSearchParams(window.location.search);
+        const serverUrl =
+          urlParams.get('multimouse') ||
+          (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+            ? 'ws://localhost:3001'
+            : `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/ws/cursors`);
+
+        statusEl = document.createElement('div');
+        statusEl.id = 'multimouse-status';
+        statusEl.style.cssText = `
+          position: fixed; bottom: 12px; right: 12px;
+          padding: 6px 12px; border-radius: 6px; font-size: 12px;
+          font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+          z-index: 999998; transition: background 0.3s;
+        `;
+
+        const setStatus = (connected: boolean, label: string) => {
+          if (!statusEl) return;
+          statusEl.textContent = label;
+          statusEl.style.background = connected ? 'rgba(40, 167, 69, 0.9)' : 'rgba(220, 53, 69, 0.9)';
+          statusEl.style.color = 'white';
+        };
+
+        document.body.appendChild(statusEl);
+        setStatus(false, 'Cursors connecting…');
+
+        const connectTimeout = setTimeout(() => {
+          if (statusEl?.textContent === 'Cursors connecting…') {
+            setStatus(false, 'Cursors timeout — check server');
+          }
+        }, 15_000);
+
+        const destroy = initCursors({
+          serverUrl,
+          room: 'dice-room',
+          onConnect: () => {
+            clearTimeout(connectTimeout);
+            setStatus(true, 'Cursors connected');
+          },
+          onDisconnect: (code?: number, reason?: string) => {
+            setStatus(false, `Cursors disconnected (${code || '?'})`);
+          },
+          onError: () => {
+            clearTimeout(connectTimeout);
+            setStatus(false, 'Cursors connection failed');
+          },
+          onUserJoin: () => {},
+          onUserLeave: () => {},
+        });
+
+        destroyRef.current = () => {
+          clearTimeout(connectTimeout);
+          destroy();
+          statusEl?.remove();
+          statusEl = null;
+        };
+      } catch (e) {
+        console.warn('Multi-mouse init failed (non-critical):', e);
       }
     };
-  }, []);
 
-  useEffect(() => {
-    const handler = () => {
-      if (destroyRef.current) destroyRef.current();
+    init();
+
+    const handleBeforeUnload = () => {
+      destroyRef.current?.();
     };
-    window.addEventListener('beforeunload', handler);
-    return () => window.removeEventListener('beforeunload', handler);
-  }, []);
+    window.addEventListener('beforeunload', handleBeforeUnload);
 
-  return status;
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+      destroyRef.current?.();
+      destroyRef.current = null;
+      initializedRef.current = false;
+    };
+  }, []);
 }

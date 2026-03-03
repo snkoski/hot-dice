@@ -1,12 +1,15 @@
 import { ProgressBar } from '../shared/ProgressBar';
-import './simulation.css';
+import type { SimulationProgress as ProgressType } from '../../types/simulator';
 
 interface SimulationProgressProps {
-  progress: { gamesCompleted: number; totalGames: number; percentComplete: number; estimatedTimeRemaining: number };
+  progress: ProgressType | null;
 }
 
-export function SimulationProgressDisplay({ progress }: SimulationProgressProps) {
+export function SimulationProgress({ progress }: SimulationProgressProps) {
+  if (!progress) return null;
+
   const remaining = Math.round(progress.estimatedTimeRemaining / 1000);
+
   return (
     <div className="card">
       <h2 className="section-title">Running Simulation...</h2>

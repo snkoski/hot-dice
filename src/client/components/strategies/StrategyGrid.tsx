@@ -1,38 +1,57 @@
-import { StrategyCard, type StrategyInfo } from './StrategyCard';
+import { StrategyCard } from './StrategyCard';
+import type { StrategyInfo, CustomStrategy } from '../../App';
 import './strategies.css';
 
 interface StrategyGridProps {
-  strategies: StrategyInfo[];
-  customStrategies: StrategyInfo[];
-  selectedIds: Set<string>;
-  onToggle: (id: string) => void;
-  onInfo: (id: string) => void;
-  onRemove: (id: string) => void;
+  availableStrategies: StrategyInfo[];
+  customStrategies: CustomStrategy[];
+  selectedStrategyIds: string[];
+  onToggleStrategy: (id: string) => void;
+  onShowDetails: (id: string) => void;
+  onRemoveCustom: (id: string) => void;
 }
 
 export function StrategyGrid({
-  strategies,
+  availableStrategies,
   customStrategies,
-  selectedIds,
-  onToggle,
-  onInfo,
-  onRemove,
+  selectedStrategyIds,
+  onToggleStrategy,
+  onShowDetails,
+  onRemoveCustom,
 }: StrategyGridProps) {
-  const allStrategies = [...strategies, ...customStrategies];
-
   return (
-    <div className="strategy-grid">
-      {allStrategies.map((strategy) => (
-        <StrategyCard
-          key={strategy.id}
-          strategy={strategy}
-          selected={selectedIds.has(strategy.id)}
-          isCustom={customStrategies.some((c) => c.id === strategy.id)}
-          onToggle={() => onToggle(strategy.id)}
-          onInfo={strategies.some((s) => s.id === strategy.id) ? () => onInfo(strategy.id) : undefined}
-          onRemove={customStrategies.some((c) => c.id === strategy.id) ? () => onRemove(strategy.id) : undefined}
-        />
-      ))}
-    </div>
+    <>
+      <div className="strategy-grid">
+        {availableStrategies.map((s) => (
+          <StrategyCard
+            key={s.id}
+            id={s.id}
+            name={s.name}
+            description={s.description}
+            selected={selectedStrategyIds.includes(s.id)}
+            hasDetails={!!s.details}
+            onToggle={onToggleStrategy}
+            onShowDetails={onShowDetails}
+          />
+        ))}
+        {customStrategies.map((s) => (
+          <StrategyCard
+            key={s.id}
+            id={s.id}
+            name={s.name}
+            description={s.description}
+            selected={selectedStrategyIds.includes(s.id)}
+            isCustom
+            onToggle={onToggleStrategy}
+            onRemove={onRemoveCustom}
+          />
+        ))}
+      </div>
+      <p style={{ color: '#666', fontStyle: 'italic' }}>
+        {selectedStrategyIds.length > 0
+          ? `${selectedStrategyIds.length} ${selectedStrategyIds.length === 1 ? 'strategy' : 'strategies'} selected`
+          : 'Select at least 1 strategy'}
+      </p>
+    </>
   );
 }

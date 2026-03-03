@@ -1,47 +1,35 @@
 import { useEffect } from 'react';
-import type { InteractiveGameStep } from '../../types/stepGame';
 
 interface TurnEndNotificationProps {
   type: 'bank' | 'farkle';
   points: number;
-  newTotal?: number;
-  skippedSteps?: InteractiveGameStep[];
-  onDone: (skippedSteps?: InteractiveGameStep[]) => void;
+  newTotal: number;
+  onDone: () => void;
 }
 
-export function TurnEndNotification({
-  type,
-  points,
-  newTotal,
-  skippedSteps,
-  onDone,
-}: TurnEndNotificationProps) {
+export function TurnEndNotification({ type, points, newTotal, onDone }: TurnEndNotificationProps) {
   useEffect(() => {
-    const timer = setTimeout(() => {
-      onDone(skippedSteps);
-    }, 2200);
+    const timer = setTimeout(onDone, 2200);
     return () => clearTimeout(timer);
-  }, [onDone, skippedSteps]);
+  }, [onDone]);
+
+  if (type === 'bank') {
+    return (
+      <div style={{ textAlign: 'center', padding: 24 }}>
+        <div style={{ fontSize: '3em', marginBottom: 10 }}>🏦</div>
+        <div style={{ fontSize: '1.8em', fontWeight: 'bold', color: '#28a745', marginBottom: 8 }}>Banked!</div>
+        <div style={{ fontSize: '1.4em', color: '#333' }}>+{points} points</div>
+        <div style={{ fontSize: '1em', color: '#666', marginTop: 8 }}>New total: {newTotal.toLocaleString()}</div>
+      </div>
+    );
+  }
 
   return (
-    <div className="turn-end-notification">
-      {type === 'bank' ? (
-        <>
-          <div className="turn-end-icon">🏦</div>
-          <div className="turn-end-title">Banked!</div>
-          <div className="turn-end-points">+{points} points</div>
-          {newTotal != null && (
-            <div className="turn-end-total">New total: {newTotal.toLocaleString()}</div>
-          )}
-        </>
-      ) : (
-        <>
-          <div className="turn-end-icon">💥</div>
-          <div className="turn-end-title farkle">Farkle!</div>
-          <div className="turn-end-points">Lost {points} points</div>
-          <div className="turn-end-sub">Turn over</div>
-        </>
-      )}
+    <div style={{ textAlign: 'center', padding: 24 }}>
+      <div style={{ fontSize: '3em', marginBottom: 10 }}>💥</div>
+      <div style={{ fontSize: '1.8em', fontWeight: 'bold', color: '#dc3545', marginBottom: 8 }}>Farkle!</div>
+      <div style={{ fontSize: '1.4em', color: '#333' }}>Lost {points} points</div>
+      <div style={{ fontSize: '1em', color: '#999', marginTop: 8 }}>Turn over</div>
     </div>
   );
 }

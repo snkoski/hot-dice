@@ -1,117 +1,126 @@
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import { InteractiveGameDisplay } from './InteractiveGameDisplay';
-import type { CustomStrategyData } from '../strategies/StrategyPanel';
-import type { ScoringRules } from '../../types/game';
+import { PlayStyleModal } from '../stats/PlayStyleModal';
 import { useHumanDecisions } from '../../hooks/useHumanDecisions';
-import './interactive.css';
+import type { ScoringRules } from '../../types/game';
+import type { HumanDecisionLocalRecord } from '../../hooks/useHumanDecisions';
 
 interface InteractivePanelProps {
   selectedStrategyIds: string[];
-  customStrategies: CustomStrategyData[];
-  targetScore: number;
-  minScore: number;
-  scoringRules: ScoringRules;
+  defaultScoringRules: ScoringRules;
 }
 
-export function InteractivePanel({
-  selectedStrategyIds,
-  customStrategies,
-  targetScore,
-  minScore,
-  scoringRules,
-}: InteractivePanelProps) {
+export function InteractivePanel({ selectedStrategyIds, defaultScoringRules }: InteractivePanelProps) {
+  const [gameState, setGameState] = useState<{ gameId: string; mirroredDice: boolean; step: any } | null>(null);
+  const [loading, setLoading] = useState(false);
   const [mirroredDice, setMirroredDice] = useState(false);
-  const [gameState, setGameState] = useState<{
-    gameId: string;
-    initialStep: unknown;
-    mirroredDice: boolean;
-  } | null>(null);
-  const { addDecision } = useHumanDecisions();
+  const [playStyleOpen, setPlayStyleOpen] = useState(false);
+  const [decisions, setDecisions] = useState<HumanDecisionLocalRecord[]>([]);
+  const [analysis, setAnalysis] = useState<ReturnType<typeof analyze>>(null);
 
-  const [startError, setStartError] = useState<string | null>(null);
+  const { loadAll: loadDecisions, analyze, clearAll: clearDecisions, exportJSON } = useHumanDecisions();
 
-  const handleStart = async () => {
-    setStartError(null);
+  const startGame = useCallback(async () => {
+    const strategyIds = selectedStrategyIds.filter((id) => !id.startsWith('custom-'));
     try {
-      const builtInIds = selectedStrategyIds.filter((id) => !id.startsWith('custom-'));
+      setLoading(true);
       const res = await fetch('/api/game/interactive/init', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          strategyIds: builtInIds,
+          strategyIds,
           humanPlayerIndices: [0],
-          targetScore,
-          minimumScoreToBoard: minScore,
+          targetScore: 10000,
+          minimumScoreToBoard: defaultScoringRules.minimumScoreToBoard,
           mirroredDice,
         }),
       });
-
       if (!res.ok) {
         const err = await res.json();
-        throw new Error(err.error || 'Failed to start game');
+        alert('Failed to start game: ' + err.error);
+        return;
       }
-
       const data = await res.json();
       setGameState({
         gameId: data.gameId,
-        initialStep: data.currentStep,
         mirroredDice: data.mirroredDice ?? false,
+        step: data.currentStep,
       });
-    } catch (err) {
-      setStartError(err instanceof Error ? err.message : 'Failed to start game');
+    } catch (e: any) {
+      alert('Failed to start game: ' + e.message);
+    } finally {
+      setLoading(false);
     }
-  };
+  }, [selectedStrategyIds, defaultScoringRules.minimumScoreToBoard, mirroredDice]);
 
-  const handleClose = () => {
-    setGameState(null);
-  };
+  const viewPlayStyle = useCallback(() => {
+    const d = loadDecisions();
+    if (d.length === 0) {
+      alert('No decision history yet. Play some interactive games first!');
+      return;
+    }
+    setDecisions(d);
+    setAnalysis(analyze());
+    setPlayStyleOpen(true);
+  }, [loadDecisions, analyze]);
 
-  const effectiveMirroredDice = gameState?.mirroredDice ?? mirroredDice;
+  if (gameState) {
+    return (
+      <InteractiveGameDisplay
+        gameId={gameState.gameId}
+        mirroredDice={gameState.mirroredDice}
+        initialStep={gameState.step}
+        onClose={() => setGameState(null)}
+      />
+    );
+  }
 
   return (
-    <div className="card">
-      <h2 className="section-title">🎮 Play Interactive Game</h2>
-      <p className="interactive-description">
-        Play against AI strategies! Make real decisions, see immediate results, and build your
-        play history for analysis.
-      </p>
+    <>
+      <div className="card">
+        <h2 className="section-title">🎮 Play Interactive Game</h2>
+        <p style={{ color: '#666', marginBottom: 20 }}>
+          Play against AI strategies! Make real decisions, see immediate results, and build your play history for analysis.
+        </p>
+        <label style={{
+          display: 'flex', alignItems: 'center', gap: 10, marginBottom: 15,
+          cursor: 'pointer', userSelect: 'none', width: 'fit-content',
+        }}>
+          <input
+            type="checkbox"
+            checked={mirroredDice}
+            onChange={(e) => setMirroredDice(e.target.checked)}
+            style={{ width: 18, height: 18, cursor: 'pointer', accentColor: '#667eea' }}
+          />
+          <span style={{ fontSize: '0.95em', color: '#444' }}>
+            <strong>Mirrored dice</strong> — all players roll the same dice each round
+          </span>
+        </label>
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+          <button
+            onClick={startGame}
+            disabled={loading}
+            style={{ padding: '12px 24px', background: '#28a745', flex: 1, minWidth: 200, fontWeight: 'bold' }}
+          >
+            {loading ? 'Starting...' : '🎮 Start Interactive Game'}
+          </button>
+          <button
+            onClick={viewPlayStyle}
+            style={{ padding: '12px 24px', background: '#667eea', flex: 1, minWidth: 200, fontWeight: 'bold' }}
+          >
+            📊 View Your Play Style
+          </button>
+        </div>
+      </div>
 
-      <label className="interactive-mirrored-toggle">
-        <input
-          type="checkbox"
-          checked={gameState ? effectiveMirroredDice : mirroredDice}
-          onChange={(e) => setMirroredDice(e.target.checked)}
-          disabled={gameState !== null}
-        />
-        <span>
-          <strong>Mirrored dice</strong> — all players roll the same dice each round
-        </span>
-      </label>
-
-      {!gameState ? (
-        <>
-          <div className="interactive-actions">
-            <button
-              className="interactive-start-btn"
-              onClick={handleStart}
-              type="button"
-            >
-              🎮 Start Interactive Game
-            </button>
-          </div>
-          {startError && (
-            <div className="interactive-error">{startError}</div>
-          )}
-        </>
-      ) : (
-        <InteractiveGameDisplay
-          gameId={gameState.gameId}
-          initialStep={gameState.initialStep}
-          mirroredDice={effectiveMirroredDice}
-          onClose={handleClose}
-          addDecision={addDecision}
-        />
-      )}
-    </div>
+      <PlayStyleModal
+        open={playStyleOpen}
+        onClose={() => setPlayStyleOpen(false)}
+        decisions={decisions}
+        analysis={analysis}
+        onExport={exportJSON}
+        onClear={clearDecisions}
+      />
+    </>
   );
 }

@@ -1,74 +1,65 @@
 import { calculateFarkleRisk } from '../../lib/farkleRisk';
 
-interface HumanDecisionContext {
+interface ContinueDecisionUIProps {
   turnPoints: number;
   diceRemaining: number;
-}
-
-interface ContinueDecisionUIProps {
-  context: HumanDecisionContext;
-  decisionId: string;
-  onSubmit: (decisionId: string, continueRolling: boolean) => Promise<void>;
   isSubmitting: boolean;
+  onDecision: (continueRolling: boolean) => void;
 }
 
-export function ContinueDecisionUI({
-  context,
-  decisionId,
-  onSubmit,
-  isSubmitting,
-}: ContinueDecisionUIProps) {
-  const farkleRisk = calculateFarkleRisk(context.diceRemaining);
+export function ContinueDecisionUI({ turnPoints, diceRemaining, isSubmitting, onDecision }: ContinueDecisionUIProps) {
+  const farkleRisk = calculateFarkleRisk(diceRemaining);
 
   return (
-    <>
+    <div>
       <h4 style={{ marginTop: 0, color: '#667eea' }}>🤔 Decision Time</h4>
 
-      <div className="continue-context-box">
-        <div className="continue-turn-label">Turn Total So Far</div>
-        <div className="continue-turn-value">{context.turnPoints}</div>
-        <div className="continue-stats-grid">
+      <div style={{ background: 'white', padding: 20, borderRadius: 8, marginBottom: 20, textAlign: 'center' }}>
+        <div style={{ fontSize: '1.1em', color: '#666', marginBottom: 10 }}>Turn Total So Far</div>
+        <div style={{ fontSize: '2.5em', fontWeight: 'bold', color: '#667eea', marginBottom: 15 }}>{turnPoints}</div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 15, marginTop: 15, textAlign: 'center' }}>
           <div>
-            <div className="continue-stat-label">Dice Remaining</div>
-            <div className="continue-stat-value">{context.diceRemaining}</div>
+            <div style={{ fontSize: '0.9em', color: '#666' }}>Dice Remaining</div>
+            <div style={{ fontSize: '1.5em', fontWeight: 'bold', color: '#333' }}>{diceRemaining}</div>
           </div>
           <div>
-            <div className="continue-stat-label">Farkle Risk</div>
-            <div
-              className="continue-stat-value"
-              style={{ color: farkleRisk > 0.3 ? '#dc3545' : '#28a745' }}
-            >
+            <div style={{ fontSize: '0.9em', color: '#666' }}>Farkle Risk</div>
+            <div style={{ fontSize: '1.5em', fontWeight: 'bold', color: farkleRisk > 0.3 ? '#dc3545' : '#28a745' }}>
               {(farkleRisk * 100).toFixed(0)}%
             </div>
           </div>
         </div>
       </div>
 
-      <div className="continue-buttons">
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 15 }}>
         <button
-          type="button"
-          className="continue-stop-btn"
-          onClick={() => onSubmit(decisionId, false)}
+          onClick={() => onDecision(false)}
           disabled={isSubmitting}
-        >
-          <div className="continue-btn-icon">⏸</div>
-          <div>Stop & Bank</div>
-          <div className="continue-btn-points">{context.turnPoints} pts</div>
-        </button>
-        <button
-          type="button"
-          className="continue-roll-btn"
           style={{
-            background: context.diceRemaining <= 2 ? '#dc3545' : '#667eea',
+            padding: 20, fontSize: '1.1em', background: '#28a745', color: 'white',
+            border: 'none', borderRadius: 8, cursor: 'pointer', fontWeight: 'bold',
           }}
-          onClick={() => onSubmit(decisionId, true)}
-          disabled={isSubmitting}
         >
-          <div className="continue-btn-icon">🎲</div>
+          <div style={{ fontSize: '1.5em', marginBottom: 5 }}>⏸</div>
+          <div>Stop &amp; Bank</div>
+          <div style={{ fontSize: '1.3em', marginTop: 5 }}>{turnPoints} pts</div>
+        </button>
+
+        <button
+          onClick={() => onDecision(true)}
+          disabled={isSubmitting}
+          style={{
+            padding: 20, fontSize: '1.1em',
+            background: diceRemaining <= 2 ? '#dc3545' : '#667eea',
+            color: 'white', border: 'none', borderRadius: 8, cursor: 'pointer', fontWeight: 'bold',
+          }}
+        >
+          <div style={{ fontSize: '1.5em', marginBottom: 5 }}>🎲</div>
           <div>Roll Again</div>
-          <div className="continue-btn-points">{context.diceRemaining} dice</div>
+          <div style={{ fontSize: '1.3em', marginTop: 5 }}>{diceRemaining} dice</div>
         </button>
       </div>
-    </>
+    </div>
   );
 }

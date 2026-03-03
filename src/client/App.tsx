@@ -1,12 +1,31 @@
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
+import { ErrorBoundary } from './ErrorBoundary';
 import { StrategyPanel } from './components/strategies/StrategyPanel';
 import { SimulationPanel } from './components/simulation/SimulationPanel';
-import { StepThroughPanel } from './components/stepThrough';
-import { InteractivePanel } from './components/interactive';
 import { HistoricalStatsPanel } from './components/stats/HistoricalStatsPanel';
-import type { CustomStrategyData } from './components/strategies/StrategyPanel';
-import type { StrategyInfo } from './components/strategies/StrategyCard';
+import { StepThroughPanel } from './components/step-through/StepThroughPanel';
+import { InteractivePanel } from './components/interactive/InteractivePanel';
+import { useMultiMouse } from './hooks/useMultiMouse';
 import type { ScoringRules } from './types/game';
+
+export interface StrategyInfo {
+  id: string;
+  name: string;
+  description: string;
+  version: string;
+  details: any | null;
+}
+
+export interface CustomStrategy {
+  id: string;
+  name: string;
+  description: string;
+  version: string;
+  isCustom: true;
+  type: 'simple' | 'safe';
+  threshold: number;
+  minDice?: number;
+}
 
 const DEFAULT_SCORING_RULES: ScoringRules = {
   enableStraight: true,
@@ -20,61 +39,73 @@ const DEFAULT_SCORING_RULES: ScoringRules = {
 };
 
 export function App() {
-  const [selectedStrategyIds, setSelectedStrategyIds] = useState<string[]>([]);
-  const [customStrategies, setCustomStrategies] = useState<CustomStrategyData[]>([]);
-  const [canRunSimulation, setCanRunSimulation] = useState(false);
+  useMultiMouse();
+
   const [availableStrategies, setAvailableStrategies] = useState<StrategyInfo[]>([]);
-  const [targetScore, setTargetScore] = useState(10000);
-  const [minScore, setMinScore] = useState(0);
-  const [scoringRules, setScoringRules] = useState<ScoringRules>(DEFAULT_SCORING_RULES);
+  const [customStrategies, setCustomStrategies] = useState<CustomStrategy[]>([]);
+  const [selectedStrategyIds, setSelectedStrategyIds] = useState<string[]>([]);
+
+  useEffect(() => {
+    fetch('/api/strategies')
+      .then((r) => r.json())
+      .then(setAvailableStrategies)
+      .catch((e) => console.error('Failed to load strategies:', e));
+  }, []);
+
+  const toggleStrategy = useCallback((id: string) => {
+    setSelectedStrategyIds((prev) =>
+      prev.includes(id) ? prev.filter((sid) => sid !== id) : [...prev, id]
+    );
+  }, []);
+
+  const addCustomStrategy = useCallback((strategy: CustomStrategy) => {
+    setCustomStrategies((prev) => [...prev, strategy]);
+  }, []);
+
+  const removeCustomStrategy = useCallback((id: string) => {
+    setCustomStrategies((prev) => prev.filter((s) => s.id !== id));
+    setSelectedStrategyIds((prev) => prev.filter((sid) => sid !== id));
+  }, []);
+
+  const allStrategies = [...availableStrategies, ...customStrategies];
 
   return (
-    <div className="container">
-      <header>
-        <h1>🎲 Hot Dice Simulator</h1>
-        <p className="subtitle">Compare strategies and see which wins!</p>
-      </header>
+    <ErrorBoundary>
+      <div className="container">
+        <header>
+          <h1>🎲 Hot Dice Simulator</h1>
+          <p className="subtitle">Compare strategies and see which wins!</p>
+        </header>
 
-      <StrategyPanel
-        selectedStrategyIds={selectedStrategyIds}
-        customStrategies={customStrategies}
-        onSelectionChange={setSelectedStrategyIds}
-        onCustomStrategiesChange={setCustomStrategies}
-        onCanRunChange={setCanRunSimulation}
-        onStrategiesLoaded={setAvailableStrategies}
-      />
+        <StrategyPanel
+          availableStrategies={availableStrategies}
+          customStrategies={customStrategies}
+          selectedStrategyIds={selectedStrategyIds}
+          onToggleStrategy={toggleStrategy}
+          onAddCustom={addCustomStrategy}
+          onRemoveCustom={removeCustomStrategy}
+        />
 
-      <SimulationPanel
-        selectedStrategyIds={selectedStrategyIds}
-        customStrategies={customStrategies}
-        availableStrategies={availableStrategies}
-        canRun={canRunSimulation}
-        targetScore={targetScore}
-        setTargetScore={setTargetScore}
-        minScore={minScore}
-        setMinScore={setMinScore}
-        scoringRules={scoringRules}
-        setScoringRules={setScoringRules}
-      />
+        <SimulationPanel
+          selectedStrategyIds={selectedStrategyIds}
+          allStrategies={allStrategies}
+          customStrategies={customStrategies}
+          defaultScoringRules={DEFAULT_SCORING_RULES}
+        />
 
-      <StepThroughPanel
-        selectedStrategyIds={selectedStrategyIds}
-        customStrategies={customStrategies}
-        targetScore={targetScore}
-        minScore={minScore}
-        scoringRules={scoringRules}
-        canStart={canRunSimulation}
-      />
+        <HistoricalStatsPanel />
 
-      <InteractivePanel
-        selectedStrategyIds={selectedStrategyIds}
-        customStrategies={customStrategies}
-        targetScore={targetScore}
-        minScore={minScore}
-        scoringRules={scoringRules}
-      />
+        <InteractivePanel
+          selectedStrategyIds={selectedStrategyIds}
+          defaultScoringRules={DEFAULT_SCORING_RULES}
+        />
 
-      <HistoricalStatsPanel />
-    </div>
+        <StepThroughPanel
+          selectedStrategyIds={selectedStrategyIds}
+          customStrategies={customStrategies}
+          defaultScoringRules={DEFAULT_SCORING_RULES}
+        />
+      </div>
+    </ErrorBoundary>
   );
 }

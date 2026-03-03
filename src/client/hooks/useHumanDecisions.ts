@@ -1,118 +1,101 @@
-import { useState, useCallback } from 'react';
+import { useCallback } from 'react';
 
 const HUMAN_DECISIONS_KEY = 'hot-dice-human-decisions';
-const STORAGE_VERSION = 1;
 
-interface StoredDecisions {
-  version: number;
-  data: HumanDecisionRecord[];
-}
-
-export interface HumanDecisionRecord {
+export interface HumanDecisionLocalRecord {
   id: string;
   timestamp: string;
-  gameId?: string;
+  gameId: string;
   diceRolled: number[];
   diceRemaining: number;
   turnPoints: number;
   playerScore: number;
   opponentScores: number[];
   farkleRisk: number;
-  availableCombinations?: unknown[];
+  availableCombinations: any[];
   continue: boolean;
-  reason?: string;
+  reason: string;
 }
 
-function loadFromStorage(): HumanDecisionRecord[] {
+interface VersionedData {
+  version: number;
+  data: HumanDecisionLocalRecord[];
+}
+
+function loadRaw(): HumanDecisionLocalRecord[] {
   try {
     const raw = localStorage.getItem(HUMAN_DECISIONS_KEY);
     if (!raw) return [];
-
     const parsed = JSON.parse(raw);
-
-    if (parsed.version === undefined) {
-      return Array.isArray(parsed) ? parsed : [];
+    if (parsed && typeof parsed.version === 'number') {
+      return (parsed as VersionedData).data;
     }
-
-    if (parsed.version === STORAGE_VERSION && Array.isArray(parsed.data)) {
-      return parsed.data;
-    }
-
+    if (Array.isArray(parsed)) return parsed;
     return [];
-  } catch (e) {
-    console.error('Failed to load human decisions:', e);
+  } catch {
     return [];
   }
 }
 
-function saveToStorage(data: HumanDecisionRecord[]) {
-  try {
-    const envelope: StoredDecisions = { version: STORAGE_VERSION, data };
-    localStorage.setItem(HUMAN_DECISIONS_KEY, JSON.stringify(envelope));
-  } catch (e) {
-    console.error('Failed to save human decisions:', e);
-  }
-}
-
-export interface PlayStyleAnalysis {
-  totalDecisions: number;
-  continueCount: number;
-  stopCount: number;
-  continueRate: number;
-  avgRiskWhenContinuing: number;
-  avgRiskWhenStopping: number;
-  avgPointsWhenStopping: number;
-  avgDiceWhenContinuing: number;
+function save(data: HumanDecisionLocalRecord[]) {
+  const envelope: VersionedData = { version: 1, data };
+  localStorage.setItem(HUMAN_DECISIONS_KEY, JSON.stringify(envelope));
 }
 
 export function useHumanDecisions() {
-  const [decisions, setDecisions] = useState<HumanDecisionRecord[]>(loadFromStorage);
+  const loadAll = useCallback((): HumanDecisionLocalRecord[] => loadRaw(), []);
 
-  const addDecision = useCallback((record: Omit<HumanDecisionRecord, 'id'>) => {
-    const id = `decision-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
-    const full = { ...record, id };
-    setDecisions((prev) => {
-      const next = [...prev, full];
-      saveToStorage(next);
-      return next;
-    });
-    return id;
-  }, []);
+  const saveDecision = useCallback(
+    (record: Omit<HumanDecisionLocalRecord, 'id'>) => {
+      const all = loadRaw();
+      const entry: HumanDecisionLocalRecord = {
+        ...record,
+        id: `decision-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      };
+      all.push(entry);
+      save(all);
+      return entry.id;
+    },
+    [],
+  );
 
-  const analyzePlayStyle = useCallback((): PlayStyleAnalysis | null => {
+  const analyze = useCallback(() => {
+    const decisions = loadRaw();
     if (decisions.length === 0) return null;
-    const continueDecisions = decisions.filter((d) => d.continue);
-    const stopDecisions = decisions.filter((d) => !d.continue);
+
+    const cont = decisions.filter((d) => d.continue);
+    const stop = decisions.filter((d) => !d.continue);
+
     return {
       totalDecisions: decisions.length,
-      continueCount: continueDecisions.length,
-      stopCount: stopDecisions.length,
-      continueRate: continueDecisions.length / decisions.length,
+      continueCount: cont.length,
+      stopCount: stop.length,
+      continueRate: cont.length / decisions.length,
       avgRiskWhenContinuing:
-        continueDecisions.length > 0
-          ? continueDecisions.reduce((sum, d) => sum + d.farkleRisk, 0) / continueDecisions.length
+        cont.length > 0
+          ? cont.reduce((s, d) => s + d.farkleRisk, 0) / cont.length
           : 0,
       avgRiskWhenStopping:
-        stopDecisions.length > 0
-          ? stopDecisions.reduce((sum, d) => sum + d.farkleRisk, 0) / stopDecisions.length
+        stop.length > 0
+          ? stop.reduce((s, d) => s + d.farkleRisk, 0) / stop.length
           : 0,
       avgPointsWhenStopping:
-        stopDecisions.length > 0
-          ? stopDecisions.reduce((sum, d) => sum + d.turnPoints, 0) / stopDecisions.length
+        stop.length > 0
+          ? stop.reduce((s, d) => s + d.turnPoints, 0) / stop.length
           : 0,
       avgDiceWhenContinuing:
-        continueDecisions.length > 0
-          ? continueDecisions.reduce((sum, d) => sum + d.diceRemaining, 0) / continueDecisions.length
+        cont.length > 0
+          ? cont.reduce((s, d) => s + d.diceRemaining, 0) / cont.length
           : 0,
     };
-  }, [decisions]);
-
-  const clearAll = useCallback(() => {
-    setDecisions([]);
-    saveToStorage([]);
   }, []);
 
-  const exportData = useCallback(() => {
+  const clearAll = useCallback(() => {
+    localStorage.removeItem(HUMAN_DECISIONS_KEY);
+  }, []);
+
+  const exportJSON = useCallback(() => {
+    const decisions = loadRaw();
     const dataStr = JSON.stringify(decisions, null, 2);
     const blob = new Blob([dataStr], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
@@ -121,7 +104,7 @@ export function useHumanDecisions() {
     link.download = `hot-dice-decisions-${Date.now()}.json`;
     link.click();
     URL.revokeObjectURL(url);
-  }, [decisions]);
+  }, []);
 
-  return { decisions, addDecision, analyzePlayStyle, clearAll, exportData };
+  return { loadAll, saveDecision, analyze, clearAll, exportJSON };
 }
