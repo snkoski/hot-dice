@@ -1,69 +1,85 @@
-import { useRef, useCallback } from 'react';
-import type { SimulationProgress, SimulationResults } from '../types/simulator';
+import { useState, useRef, useCallback, useEffect } from 'react';
 
-interface SimulationRequest {
-  gameCount: number;
-  strategyIds: string[];
-  strategies: any[];
-  targetScore: number;
-  minimumScoreToBoard: number;
-  scoringRules: any;
-}
+export function useSimulationWebSocket() {
+  const [isRunning, setIsRunning] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const [progressText, setProgressText] = useState('');
+  const [results, setResults] = useState<any>(null);
+  const [error, setError] = useState<string | null>(null);
 
-interface UseSimulationWebSocketReturn {
-  start: (req: SimulationRequest) => void;
-  cancel: () => void;
-}
-
-export function useSimulationWebSocket(
-  onProgress: (p: SimulationProgress) => void,
-  onComplete: (r: SimulationResults) => void,
-  onError: (msg: string) => void,
-): UseSimulationWebSocketReturn {
   const wsRef = useRef<WebSocket | null>(null);
-  const runIdRef = useRef(0);
+  const currentRunIdRef = useRef<string | null>(null);
 
-  const cancel = useCallback(() => {
+  const startSimulation = useCallback((payload: any) => {
+    // Close existing WS if any
     if (wsRef.current) {
       wsRef.current.close();
-      wsRef.current = null;
     }
-  }, []);
 
-  const start = useCallback(
-    (req: SimulationRequest) => {
-      cancel();
-      const currentRunId = ++runIdRef.current;
+    const runId = Date.now().toString();
+    currentRunIdRef.current = runId;
 
-      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const ws = new WebSocket(`${protocol}//${window.location.host}/api/simulate/stream`);
-      wsRef.current = ws;
+    setIsRunning(true);
+    setProgress(0);
+    setProgressText('Starting simulation...');
+    setResults(null);
+    setError(null);
 
-      ws.onopen = () => {
-        ws.send(JSON.stringify(req));
-      };
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const wsUrl = `${protocol}//${window.location.host}/api/simulate/stream`;
+    
+    const ws = new WebSocket(wsUrl);
+    wsRef.current = ws;
 
-      ws.onmessage = (event) => {
-        if (runIdRef.current !== currentRunId) return;
-        const message = JSON.parse(event.data);
-        if (message.type === 'progress') {
-          onProgress(message.data);
-        } else if (message.type === 'complete') {
-          onComplete(message.data);
+    ws.onopen = () => {
+      if (currentRunIdRef.current !== runId) return;
+      ws.send(JSON.stringify(payload));
+    };
+
+    ws.onmessage = (event) => {
+      if (currentRunIdRef.current !== runId) return;
+      try {
+        const msg = JSON.parse(event.data);
+        if (msg.type === 'progress') {
+          setProgress(msg.data.progress);
+          setProgressText(`Completed ${msg.data.completedGames} / ${msg.data.totalGames} games`);
+        } else if (msg.type === 'complete') {
+          setResults(msg.data);
+          setIsRunning(false);
+          setProgress(100);
+          setProgressText('Simulation complete');
           ws.close();
-        } else if (message.type === 'error') {
-          onError(message.error);
+        } else if (msg.type === 'error') {
+          setError(msg.error || 'Simulation failed');
+          setIsRunning(false);
           ws.close();
         }
-      };
+      } catch (err) {
+        console.error('Failed to parse WS message:', err);
+      }
+    };
 
-      ws.onerror = () => {
-        if (runIdRef.current !== currentRunId) return;
-        onError('Connection error. Please try again.');
-      };
-    },
-    [cancel, onProgress, onComplete, onError],
-  );
+    ws.onerror = (e) => {
+      if (currentRunIdRef.current !== runId) return;
+      console.error('WebSocket error:', e);
+      setError('Connection lost');
+      setIsRunning(false);
+    };
 
-  return { start, cancel };
+    ws.onclose = () => {
+      if (currentRunIdRef.current === runId) {
+        setIsRunning(false);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (wsRef.current) {
+        wsRef.current.close();
+      }
+    };
+  }, []);
+
+  return { isRunning, progress, progressText, results, error, startSimulation };
 }

@@ -1,35 +1,41 @@
-import { useEffect } from 'react';
+import React, { useEffect } from 'react';
 
 interface TurnEndNotificationProps {
   type: 'bank' | 'farkle';
   points: number;
   newTotal: number;
-  onDone: () => void;
+  onDismiss: () => void;
 }
 
-export function TurnEndNotification({ type, points, newTotal, onDone }: TurnEndNotificationProps) {
+export function TurnEndNotification({ type, points, newTotal, onDismiss }: TurnEndNotificationProps) {
   useEffect(() => {
-    const timer = setTimeout(onDone, 2200);
+    const timer = setTimeout(() => {
+      onDismiss();
+    }, 2000);
     return () => clearTimeout(timer);
-  }, [onDone]);
+  }, [onDismiss]);
 
-  if (type === 'bank') {
-    return (
-      <div style={{ textAlign: 'center', padding: 24 }}>
-        <div style={{ fontSize: '3em', marginBottom: 10 }}>🏦</div>
-        <div style={{ fontSize: '1.8em', fontWeight: 'bold', color: '#28a745', marginBottom: 8 }}>Banked!</div>
-        <div style={{ fontSize: '1.4em', color: '#333' }}>+{points} points</div>
-        <div style={{ fontSize: '1em', color: '#666', marginTop: 8 }}>New total: {newTotal.toLocaleString()}</div>
-      </div>
-    );
-  }
+  const isBank = type === 'bank';
 
   return (
-    <div style={{ textAlign: 'center', padding: 24 }}>
-      <div style={{ fontSize: '3em', marginBottom: 10 }}>💥</div>
-      <div style={{ fontSize: '1.8em', fontWeight: 'bold', color: '#dc3545', marginBottom: 8 }}>Farkle!</div>
-      <div style={{ fontSize: '1.4em', color: '#333' }}>Lost {points} points</div>
-      <div style={{ fontSize: '1em', color: '#999', marginTop: 8 }}>Turn over</div>
+    <div style={{
+      textAlign: 'center',
+      padding: '20px',
+      background: isBank ? '#f0fff4' : '#fff5f5',
+      border: `3px solid ${isBank ? '#28a745' : '#ff6b6b'}`,
+      borderRadius: '12px',
+      margin: '20px 0',
+      animation: 'fadeIn 0.3s ease'
+    }}>
+      <h3 style={{ color: isBank ? '#28a745' : '#ff6b6b', margin: '0 0 10px 0', fontSize: '1.8em' }}>
+        {isBank ? '💰 Banked Points!' : '🔥 FARKLE!'}
+      </h3>
+      <div style={{ fontSize: '1.2em', color: '#555' }}>
+        {isBank ? `Banked ${points} points for this turn.` : 'Lost all points for this turn!'}
+      </div>
+      <div style={{ fontSize: '1.1em', marginTop: '10px', fontWeight: 'bold' }}>
+        New Total: {newTotal} pts
+      </div>
     </div>
   );
 }

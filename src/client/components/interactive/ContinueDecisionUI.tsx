@@ -1,63 +1,62 @@
+import React from 'react';
 import { calculateFarkleRisk } from '../../lib/farkleRisk';
 
 interface ContinueDecisionUIProps {
-  turnPoints: number;
-  diceRemaining: number;
+  context: any; // HumanDecisionContext
+  onConfirm: (decisionPayload: any) => void;
   isSubmitting: boolean;
-  onDecision: (continueRolling: boolean) => void;
 }
 
-export function ContinueDecisionUI({ turnPoints, diceRemaining, isSubmitting, onDecision }: ContinueDecisionUIProps) {
-  const farkleRisk = calculateFarkleRisk(diceRemaining);
+export function ContinueDecisionUI({ context, onConfirm, isSubmitting }: ContinueDecisionUIProps) {
+  const risk = calculateFarkleRisk(context.diceRemaining);
+
+  const handleContinue = () => {
+    onConfirm({ continue: true, reason: 'Human decision to continue' });
+  };
+
+  const handleStop = () => {
+    onConfirm({ continue: false, reason: 'Human decision to stop' });
+  };
 
   return (
-    <div>
-      <h4 style={{ marginTop: 0, color: '#667eea' }}>🤔 Decision Time</h4>
+    <div id="decisionBox">
+      <h3 style={{ color: '#667eea', marginBottom: '15px' }}>🤔 Continue Rolling?</h3>
+      
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '15px', marginBottom: '20px' }}>
+        <div style={{ background: 'white', padding: '15px', borderRadius: '8px', border: '1px solid #e0e0e0', textAlign: 'center' }}>
+          <div style={{ fontSize: '0.85em', color: '#666', marginBottom: '5px' }}>Current Turn Points</div>
+          <div style={{ fontSize: '1.8em', fontWeight: 'bold', color: '#28a745' }}>{context.turnPoints}</div>
+        </div>
+        
+        <div style={{ background: 'white', padding: '15px', borderRadius: '8px', border: '1px solid #e0e0e0', textAlign: 'center' }}>
+          <div style={{ fontSize: '0.85em', color: '#666', marginBottom: '5px' }}>Dice to Roll</div>
+          <div style={{ fontSize: '1.8em', fontWeight: 'bold', color: '#667eea' }}>{context.diceRemaining}</div>
+        </div>
 
-      <div style={{ background: 'white', padding: 20, borderRadius: 8, marginBottom: 20, textAlign: 'center' }}>
-        <div style={{ fontSize: '1.1em', color: '#666', marginBottom: 10 }}>Turn Total So Far</div>
-        <div style={{ fontSize: '2.5em', fontWeight: 'bold', color: '#667eea', marginBottom: 15 }}>{turnPoints}</div>
-
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 15, marginTop: 15, textAlign: 'center' }}>
-          <div>
-            <div style={{ fontSize: '0.9em', color: '#666' }}>Dice Remaining</div>
-            <div style={{ fontSize: '1.5em', fontWeight: 'bold', color: '#333' }}>{diceRemaining}</div>
-          </div>
-          <div>
-            <div style={{ fontSize: '0.9em', color: '#666' }}>Farkle Risk</div>
-            <div style={{ fontSize: '1.5em', fontWeight: 'bold', color: farkleRisk > 0.3 ? '#dc3545' : '#28a745' }}>
-              {(farkleRisk * 100).toFixed(0)}%
-            </div>
+        <div style={{ background: 'white', padding: '15px', borderRadius: '8px', border: '1px solid #e0e0e0', textAlign: 'center' }}>
+          <div style={{ fontSize: '0.85em', color: '#666', marginBottom: '5px' }}>Farkle Risk</div>
+          <div style={{ fontSize: '1.8em', fontWeight: 'bold', color: risk > 0.4 ? '#ff6b6b' : '#333' }}>
+            {(risk * 100).toFixed(0)}%
           </div>
         </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 15 }}>
-        <button
-          onClick={() => onDecision(false)}
+      <div style={{ display: 'flex', gap: '15px' }}>
+        <button 
+          onClick={handleStop} 
           disabled={isSubmitting}
-          style={{
-            padding: 20, fontSize: '1.1em', background: '#28a745', color: 'white',
-            border: 'none', borderRadius: 8, cursor: 'pointer', fontWeight: 'bold',
-          }}
+          className="decision-btn"
+          style={{ flex: 1, background: '#ff6b6b', color: 'white' }}
         >
-          <div style={{ fontSize: '1.5em', marginBottom: 5 }}>⏸</div>
-          <div>Stop &amp; Bank</div>
-          <div style={{ fontSize: '1.3em', marginTop: 5 }}>{turnPoints} pts</div>
+          ⏸ Stop & Bank Points
         </button>
-
-        <button
-          onClick={() => onDecision(true)}
+        <button 
+          onClick={handleContinue} 
           disabled={isSubmitting}
-          style={{
-            padding: 20, fontSize: '1.1em',
-            background: diceRemaining <= 2 ? '#dc3545' : '#667eea',
-            color: 'white', border: 'none', borderRadius: 8, cursor: 'pointer', fontWeight: 'bold',
-          }}
+          className="decision-btn"
+          style={{ flex: 1, background: '#28a745', color: 'white' }}
         >
-          <div style={{ fontSize: '1.5em', marginBottom: 5 }}>🎲</div>
-          <div>Roll Again</div>
-          <div style={{ fontSize: '1.3em', marginTop: 5 }}>{diceRemaining} dice</div>
+          🎲 Roll {context.diceRemaining} Dice
         </button>
       </div>
     </div>

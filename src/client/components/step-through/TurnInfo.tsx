@@ -1,23 +1,21 @@
-import './stepThrough.css';
+import React from 'react';
+import { TurnState } from '../../types/game';
 
 interface TurnInfoProps {
-  roundNumber: number;
-  rollNumber: number;
+  turn: TurnState | null;
+  playerName: string;
 }
 
-export function TurnInfo({ roundNumber, rollNumber }: TurnInfoProps) {
+export function TurnInfo({ turn, playerName }: TurnInfoProps) {
+  if (!turn) return null;
+
   return (
     <div className="turn-info">
-      <h4>Current Turn</h4>
-      <div style={{ display: 'flex', gap: 30, flexWrap: 'wrap' }}>
-        <div>
-          <div style={{ fontSize: '0.85em', color: '#666' }}>Round</div>
-          <div style={{ fontSize: '1.5em', fontWeight: 600 }}>{roundNumber}</div>
-        </div>
-        <div>
-          <div style={{ fontSize: '0.85em', color: '#666' }}>Roll Number</div>
-          <div style={{ fontSize: '1.5em', fontWeight: 600 }}>{rollNumber}</div>
-        </div>
+      <h4>Current Turn: {playerName}</h4>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px' }}>
+        <div><strong>Turn Points:</strong> {turn.turnPoints}</div>
+        <div><strong>Roll Number:</strong> {turn.rollNumber}</div>
+        <div><strong>Dice Remaining:</strong> {turn.diceRemaining}</div>
       </div>
     </div>
   );

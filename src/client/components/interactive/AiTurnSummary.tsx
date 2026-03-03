@@ -1,87 +1,56 @@
-import { formatScoreType, getDiceFace } from '../../lib/formatters';
+import React, { useState, useEffect } from 'react';
 
 interface AiTurnSummaryProps {
   skippedSteps: any[];
-  onDone: () => void;
+  onDismiss: () => void;
 }
 
-export function AiTurnSummary({ skippedSteps, onDone }: AiTurnSummaryProps) {
-  const aiSteps = skippedSteps.filter(
-    (s) => !s.currentPlayerId || !s.currentPlayerId.startsWith('human')
-  );
-  if (aiSteps.length === 0) {
-    onDone();
-    return null;
-  }
+export function AiTurnSummary({ skippedSteps, onDismiss }: AiTurnSummaryProps) {
+  const [index, setIndex] = useState(0);
 
-  const elements: React.ReactElement[] = [];
-  let inTurn = false;
-  let turnKey = 0;
-
-  for (const step of aiSteps) {
-    if (step.type === 'turn_start') {
-      if (inTurn) elements.push(<div key={`end-${turnKey}`} />);
-      turnKey++;
-      elements.push(
-        <div key={`turn-${turnKey}`} style={{
-          marginBottom: 14, background: '#f8f9fa', borderRadius: 8,
-          padding: '10px 12px', borderLeft: '3px solid #667eea',
-        }}>
-          <div style={{
-            fontWeight: 'bold', color: '#667eea', marginBottom: 6,
-            fontSize: '0.95em', textTransform: 'uppercase', letterSpacing: '0.4px',
-          }}>
-            {step.currentPlayerName}
-          </div>
-        </div>
-      );
-      inTurn = true;
-    } else if (step.type === 'roll' && step.diceRolled) {
-      const faces = step.diceRolled.map((d: number) => getDiceFace(d)).join('');
-      elements.push(
-        <div key={`roll-${turnKey}-${elements.length}`} style={{ margin: '5px 0', fontSize: '1.6em', letterSpacing: 2 }}>
-          {faces}
-        </div>
-      );
-    } else if (step.type === 'roll' && step.keptCombinations) {
-      const comboText = step.keptCombinations
-        .map((c: any) => `${formatScoreType(c.type)} (${c.points})`)
-        .join(', ');
-      elements.push(
-        <div key={`kept-${turnKey}-${elements.length}`} style={{ margin: '2px 0 6px', fontSize: '0.88em', color: '#555' }}>
-          → Kept: {comboText} = <strong>+{step.keptPoints} pts</strong>
-          <span style={{ color: '#999', marginLeft: 6 }}>({step.diceRemaining} dice left)</span>
-        </div>
-      );
-    } else if (step.type === 'turn_complete') {
-      const isFarkle = step.message?.toLowerCase().includes('farkle');
-      const color = isFarkle ? '#dc3545' : '#28a745';
-      const icon = isFarkle ? '💥' : '🏦';
-      elements.push(
-        <div key={`complete-${turnKey}-${elements.length}`} style={{
-          marginTop: 6, fontSize: '0.9em', fontWeight: 'bold', color,
-        }}>
-          {icon} {step.message}
-        </div>
-      );
-    }
-  }
+  useEffect(() => {
+    const timer = setInterval(() => {
+      if (index < skippedSteps.length - 1) {
+        setIndex(prev => prev + 1);
+      } else {
+        clearInterval(timer);
+      }
+    }, 800); // Wait 800ms between showing steps
+    return () => clearInterval(timer);
+  }, [index, skippedSteps.length]);
 
   return (
-    <div style={{ background: '#f8f9fa', borderRadius: 12, padding: 20, margin: '20px 0' }}>
-      <h4 style={{ marginTop: 0, color: '#667eea', fontSize: '1em' }}>While You Were Away...</h4>
-      <div style={{ maxHeight: 260, overflowY: 'auto', marginBottom: 14 }}>
-        {elements}
+    <div style={{ background: '#f8f9fa', padding: '20px', borderRadius: '12px', margin: '20px 0' }}>
+      <h3 style={{ color: '#667eea', marginBottom: '15px' }}>🤖 Opponents' Turns</h3>
+      
+      <div style={{ maxHeight: '300px', overflowY: 'auto' }}>
+        {skippedSteps.slice(0, index + 1).map((step, i) => (
+          <div key={i} style={{ 
+            padding: '10px', 
+            borderLeft: '3px solid #667eea', 
+            marginBottom: '10px',
+            background: 'white',
+            borderRadius: '0 8px 8px 0',
+            animation: 'fadeIn 0.3s ease'
+          }}>
+            {step.description}
+            {step.gameState?.currentTurn && (
+              <div style={{ fontSize: '0.85em', color: '#666', marginTop: '5px' }}>
+                Points: {step.gameState.currentTurn.turnPoints} | Dice: {step.gameState.currentTurn.diceRemaining}
+              </div>
+            )}
+          </div>
+        ))}
       </div>
-      <button
-        onClick={onDone}
-        style={{
-          width: '100%', padding: 13, fontSize: '1.05em', fontWeight: 'bold',
-          background: '#667eea', color: 'white', border: 'none', borderRadius: 8, cursor: 'pointer',
-        }}
-      >
-        Your Turn →
-      </button>
+
+      {index === skippedSteps.length - 1 && (
+        <button 
+          onClick={onDismiss}
+          style={{ width: '100%', marginTop: '20px', background: '#28a745' }}
+        >
+          Your Turn ▶️
+        </button>
+      )}
     </div>
   );
 }

@@ -84,24 +84,23 @@ await app.register(cors, {
 // Enable WebSocket
 await app.register(fastifyWebsocket);
 
+<<<<<<< Current (Your changes)
 // Serve static files — require Vite build output (dist). Fail fast if missing.
 const distPath = join(__dirname, '../../dist');
-<<<<<<< Current (Your changes)
 const distIndexPath = join(distPath, 'index.html');
 if (!existsSync(distIndexPath)) {
   throw new Error(
     'Build required — run pnpm build. The dist/ folder is missing or empty.'
   );
-}
 =======
-const publicPath = join(__dirname, '../../public');
-const hasDistBuild = existsSync(join(distPath, 'index.html'));
-const hasPublicFallback = existsSync(join(publicPath, 'index.html'));
-if (!hasDistBuild && !hasPublicFallback) {
-  console.error('\n❌ No built frontend found. Run `pnpm build` first.\n');
-}
-const staticRoot = hasDistBuild ? distPath : publicPath;
+// Serve static files — use Vite build output (dist)
+const distPath = join(__dirname, '../../dist');
+
+if (!existsSync(join(distPath, 'index.html'))) {
+  console.error('\n❌ Build required — run `pnpm build` first to generate the frontend client.');
+  process.exit(1);
 >>>>>>> Incoming (Background Agent changes)
+}
 
 await app.register(fastifyStatic, {
   root: distPath,

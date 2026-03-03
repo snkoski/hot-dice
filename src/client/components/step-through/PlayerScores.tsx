@@ -1,21 +1,21 @@
-import type { GameState } from '../../types/game';
-import './stepThrough.css';
+import React from 'react';
+import { clsx } from 'clsx';
+import { PlayerState } from '../../types/game';
 
 interface PlayerScoresProps {
-  gameState: GameState;
+  players: PlayerState[];
+  currentPlayerIndex: number;
 }
 
-export function PlayerScores({ gameState }: PlayerScoresProps) {
+export function PlayerScores({ players, currentPlayerIndex }: PlayerScoresProps) {
   return (
     <div className="player-scores">
-      {gameState.players.map((player) => (
-        <div key={player.id} className="player-score-card">
-          <h4>{player.name}</h4>
-          <div style={{ fontSize: '1.5em', fontWeight: 600, color: '#667eea' }}>
-            {player.totalScore.toLocaleString()}
-          </div>
-          <div style={{ fontSize: '0.85em', color: '#666', marginTop: 5 }}>
-            {player.stats.totalTurns} turns, {player.stats.farkles} farkles
+      {players.map((p, i) => (
+        <div key={p.id} className={clsx('player-score-card', { current: i === currentPlayerIndex })}>
+          <h4>{p.name}</h4>
+          <div style={{ fontSize: '1.5em', fontWeight: 'bold' }}>{p.totalScore}</div>
+          <div style={{ fontSize: '0.85em', color: '#666' }}>
+            {p.isOnBoard ? 'On Board' : 'Not On Board'}
           </div>
         </div>
       ))}

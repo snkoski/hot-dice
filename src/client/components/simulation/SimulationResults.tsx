@@ -1,27 +1,22 @@
+import React from 'react';
 import { ResultCard } from './ResultCard';
-import type { StrategyStatistics } from '../../types/simulator';
-import type { StrategyStats } from '../../types/stats';
-import './simulation.css';
 
 interface SimulationResultsProps {
-  strategyStats: StrategyStatistics[];
-  cumulativeStatsMap: Map<string, StrategyStats>;
+  results: any;
 }
 
-export function SimulationResults({ strategyStats, cumulativeStatsMap }: SimulationResultsProps) {
-  const sorted = [...strategyStats].sort((a, b) => b.winRate - a.winRate);
+export function SimulationResults({ results }: SimulationResultsProps) {
+  if (!results || !results.strategyResults) return null;
 
   return (
-    <div className="card">
+    <div className="card" id="resultsSection">
       <h2 className="section-title">Results</h2>
+      <p style={{ marginBottom: '20px', color: '#666' }}>
+        Ran {results.totalGames.toLocaleString()} games. Total ties: {results.totalTies.toLocaleString()}
+      </p>
       <div className="results-grid">
-        {sorted.map((stats, index) => (
-          <ResultCard
-            key={stats.strategyId}
-            stats={stats}
-            rank={index + 1}
-            cumulativeStats={cumulativeStatsMap.get(stats.strategyId) ?? null}
-          />
+        {results.strategyResults.map((result: any, index: number) => (
+          <ResultCard key={result.strategyId} result={result} rank={index + 1} />
         ))}
       </div>
     </div>

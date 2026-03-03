@@ -1,215 +1,95 @@
-export type Phase =
+export type InteractivePhase =
   | { phase: 'idle' }
   | { phase: 'awaiting_dice_selection'; step: any; selectedIndices: number[] }
   | { phase: 'awaiting_continue'; step: any }
   | { phase: 'ai_summary'; skippedSteps: any[]; pendingStep: any }
-  | { phase: 'turn_end_notification'; notificationType: 'bank' | 'farkle'; points: number; newTotal: number; pendingStep: any; pendingSkippedSteps: any[] }
+  | { phase: 'turn_end_notification'; type: 'bank' | 'farkle'; points: number; newTotal: number; pendingStep: any }
   | { phase: 'game_over'; finalStep: any }
   | { phase: 'error'; message: string };
 
-export interface InteractiveState {
-  current: Phase;
-  gameId: string | null;
-  mirroredDice: boolean;
-  history: any[];
-  historyIndex: number;
-  isSubmitting: boolean;
-}
-
 export type InteractiveAction =
-  | { type: 'GAME_STARTED'; gameId: string; mirroredDice: boolean; step: any }
-  | { type: 'DICE_TOGGLED'; index: number }
-  | { type: 'DICE_ALL_SELECTED'; indices: number[] }
-  | { type: 'SUBMIT_START' }
-  | { type: 'SUBMIT_END' }
-  | { type: 'DICE_RESPONSE'; step: any; skippedSteps: any[] }
-  | { type: 'CONTINUE_RESPONSE'; step: any; skippedSteps: any[]; prevTurnPoints: number; didContinue: boolean }
-  | { type: 'NOTIFICATION_DONE' }
-  | { type: 'AI_SUMMARY_DONE' }
-  | { type: 'CLOSE' }
-  | { type: 'ERROR'; message: string }
-  | { type: 'NAVIGATE_BACK' }
-  | { type: 'NAVIGATE_FORWARD' };
+  | { type: 'API_SUCCESS'; step: any; skippedSteps?: any[] }
+  | { type: 'API_ERROR'; message: string }
+  | { type: 'TOGGLE_DIE'; index: number }
+  | { type: 'SELECT_ALL_SCORING'; indices: number[] }
+  | { type: 'SHOW_NOTIFICATION'; notifType: 'bank' | 'farkle'; points: number; newTotal: number; pendingStep: any; skippedSteps?: any[] }
+  | { type: 'DISMISS_SUMMARY' }
+  | { type: 'DISMISS_NOTIFICATION' }
+  | { type: 'RESET' };
 
-export const INITIAL_STATE: InteractiveState = {
-  current: { phase: 'idle' },
-  gameId: null,
-  mirroredDice: false,
-  history: [],
-  historyIndex: 0,
-  isSubmitting: false,
-};
+function determinePhaseFromStep(step: any, skippedSteps?: any[]): InteractivePhase {
+  if (skippedSteps && skippedSteps.length > 0) {
+    return { phase: 'ai_summary', skippedSteps, pendingStep: step };
+  }
 
-function resolvePhaseFromStep(step: any): Phase {
-  if (step.type === 'game_end') {
+  if (step.gameState?.isGameOver) {
     return { phase: 'game_over', finalStep: step };
   }
-  if (step.type === 'awaiting_human_decision' && step.humanDecisions?.[0]) {
-    const hd = step.humanDecisions[0];
-    if (hd.type === 'dice') {
+
+  if (step.type === 'awaiting_human_decision') {
+    if (step.decision.type === 'dice') {
       return { phase: 'awaiting_dice_selection', step, selectedIndices: [] };
+    } else if (step.decision.type === 'continue') {
+      return { phase: 'awaiting_continue', step };
     }
-    return { phase: 'awaiting_continue', step };
   }
-  return { phase: 'idle' };
+
+  // Fallback to error if unrecognized state
+  return { phase: 'error', message: 'Unrecognized step type from API' };
 }
 
-export function interactiveReducer(state: InteractiveState, action: InteractiveAction): InteractiveState {
+export function interactiveReducer(state: InteractivePhase, action: InteractiveAction): InteractivePhase {
   switch (action.type) {
-    case 'GAME_STARTED': {
-      const history = [action.step];
+    case 'API_SUCCESS': {
+      const newPhase = determinePhaseFromStep(action.step, action.skippedSteps);
+
+      // Check for turn end notifications if we are receiving an AI summary or a new decision
+      // Actually, if we just finished a human turn and banked/farkled, we should show a notification first.
+      // Wait, let's keep it simple: the caller (API response handler) might need to figure out notifications,
+      // or the reducer can check if the previous state's turn points went to 0 (farkle) or increased (bank).
+      // For now, let's trust API_SUCCESS to move us to the next structural phase, and let the components or caller dispatch NOTIFICATION if needed.
+      // Wait, `determinePhaseFromStep` doesn't handle `turn_end_notification`. We might need an explicit dispatch for that, 
+      // or we can detect it here if we pass the previous step.
+      return newPhase;
+    }
+    
+    case 'API_ERROR':
+      return { phase: 'error', message: action.message };
+
+    case 'TOGGLE_DIE':
+      if (state.phase !== 'awaiting_dice_selection') return state;
+      const newIndices = state.selectedIndices.includes(action.index)
+        ? state.selectedIndices.filter(i => i !== action.index)
+        : [...state.selectedIndices, action.index];
+      return { ...state, selectedIndices: newIndices };
+
+    case 'SELECT_ALL_SCORING':
+      if (state.phase !== 'awaiting_dice_selection') return state;
+      return { ...state, selectedIndices: action.indices };
+
+    case 'SHOW_NOTIFICATION':
       return {
-        ...state,
-        gameId: action.gameId,
-        mirroredDice: action.mirroredDice,
-        history,
-        historyIndex: 0,
-        isSubmitting: false,
-        current: resolvePhaseFromStep(action.step),
+        phase: 'turn_end_notification',
+        type: action.notifType,
+        points: action.points,
+        newTotal: action.newTotal,
+        pendingStep: { step: action.pendingStep, skippedSteps: action.skippedSteps } // We store both so we can proceed correctly
       };
-    }
 
-    case 'DICE_TOGGLED': {
-      if (state.current.phase !== 'awaiting_dice_selection') return state;
-      const prev = state.current.selectedIndices;
-      const idx = action.index;
-      const next = prev.includes(idx) ? prev.filter((i) => i !== idx) : [...prev, idx];
-      return {
-        ...state,
-        current: { ...state.current, selectedIndices: next },
-      };
-    }
+    case 'DISMISS_SUMMARY':
+      if (state.phase !== 'ai_summary') return state;
+      return determinePhaseFromStep(state.pendingStep);
 
-    case 'DICE_ALL_SELECTED': {
-      if (state.current.phase !== 'awaiting_dice_selection') return state;
-      return {
-        ...state,
-        current: { ...state.current, selectedIndices: action.indices },
-      };
-    }
+    case 'DISMISS_NOTIFICATION':
+      if (state.phase !== 'turn_end_notification') return state;
+      const { step, skippedSteps } = state.pendingStep;
+      return determinePhaseFromStep(step, skippedSteps);
 
-    case 'SUBMIT_START':
-      return { ...state, isSubmitting: true };
+    case 'RESET':
+      return { phase: 'idle' };
 
-    case 'SUBMIT_END':
-      return { ...state, isSubmitting: false };
-
-    case 'DICE_RESPONSE': {
-      const newHistory = [...state.history, action.step];
-      const newIndex = newHistory.length - 1;
-
-      if (action.skippedSteps.length > 0) {
-        return {
-          ...state,
-          isSubmitting: false,
-          history: newHistory,
-          historyIndex: newIndex,
-          current: { phase: 'ai_summary', skippedSteps: action.skippedSteps, pendingStep: action.step },
-        };
-      }
-      return {
-        ...state,
-        isSubmitting: false,
-        history: newHistory,
-        historyIndex: newIndex,
-        current: resolvePhaseFromStep(action.step),
-      };
-    }
-
-    case 'CONTINUE_RESPONSE': {
-      const newHistory = [...state.history, action.step];
-      const newIndex = newHistory.length - 1;
-
-      let notificationType: 'bank' | 'farkle' | null = null;
-      let newTotal = 0;
-
-      if (!action.didContinue) {
-        notificationType = 'bank';
-        const humanPlayer = action.step.gameState?.players?.find((p: any) => p.id?.startsWith('human'));
-        newTotal = humanPlayer?.totalScore ?? 0;
-      } else {
-        const nextCtx = action.step.humanDecisions?.[0]?.context;
-        if (nextCtx && nextCtx.turnPoints === 0 && action.prevTurnPoints > 0) {
-          notificationType = 'farkle';
-        }
-      }
-
-      if (notificationType) {
-        return {
-          ...state,
-          isSubmitting: false,
-          history: newHistory,
-          historyIndex: newIndex,
-          current: {
-            phase: 'turn_end_notification',
-            notificationType,
-            points: action.prevTurnPoints,
-            newTotal,
-            pendingStep: action.step,
-            pendingSkippedSteps: action.skippedSteps,
-          },
-        };
-      }
-
-      if (action.skippedSteps.length > 0) {
-        return {
-          ...state,
-          isSubmitting: false,
-          history: newHistory,
-          historyIndex: newIndex,
-          current: { phase: 'ai_summary', skippedSteps: action.skippedSteps, pendingStep: action.step },
-        };
-      }
-
-      return {
-        ...state,
-        isSubmitting: false,
-        history: newHistory,
-        historyIndex: newIndex,
-        current: resolvePhaseFromStep(action.step),
-      };
-    }
-
-    case 'NOTIFICATION_DONE': {
-      if (state.current.phase !== 'turn_end_notification') return state;
-      const { pendingStep, pendingSkippedSteps } = state.current;
-      if (pendingSkippedSteps.length > 0) {
-        return {
-          ...state,
-          current: { phase: 'ai_summary', skippedSteps: pendingSkippedSteps, pendingStep },
-        };
-      }
-      return { ...state, current: resolvePhaseFromStep(pendingStep) };
-    }
-
-    case 'AI_SUMMARY_DONE': {
-      if (state.current.phase !== 'ai_summary') return state;
-      return { ...state, current: resolvePhaseFromStep(state.current.pendingStep) };
-    }
-
-    case 'NAVIGATE_BACK': {
-      if (state.historyIndex > 0) {
-        return { ...state, historyIndex: state.historyIndex - 1 };
-      }
-      return state;
-    }
-
-    case 'NAVIGATE_FORWARD': {
-      if (state.historyIndex < state.history.length - 1) {
-        return { ...state, historyIndex: state.historyIndex + 1 };
-      }
-      return state;
-    }
-
-    case 'CLOSE':
-      return INITIAL_STATE;
-
-    case 'ERROR':
-      return { ...state, isSubmitting: false, current: { phase: 'error', message: action.message } };
-
-    default: {
+    default:
       const _: never = action;
       return state;
-    }
   }
 }

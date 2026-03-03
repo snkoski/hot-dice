@@ -1,37 +1,26 @@
-import { useEffect, type ReactNode } from 'react';
+import React, { ReactNode } from 'react';
+import { clsx } from 'clsx';
 import './shared.css';
 
 interface ModalProps {
-  open: boolean;
+  isOpen: boolean;
   onClose: () => void;
+  title?: string;
   children: ReactNode;
   maxWidth?: string;
 }
 
-export function Modal({ open, onClose, children, maxWidth = '700px' }: ModalProps) {
-  useEffect(() => {
-    if (open) {
-      document.body.style.overflow = 'hidden';
-      return () => { document.body.style.overflow = ''; };
-    }
-  }, [open]);
-
-  useEffect(() => {
-    if (!open) return;
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
-    };
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
-  }, [open, onClose]);
-
-  if (!open) return null;
+export function Modal({ isOpen, onClose, title, children, maxWidth = '700px' }: ModalProps) {
+  if (!isOpen) return null;
 
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal" style={{ maxWidth }} onClick={(e) => e.stopPropagation()}>
         <button className="modal-close" onClick={onClose}>&times;</button>
-        {children}
+        {title && <h2>{title}</h2>}
+        <div className="modal-content">
+          {children}
+        </div>
       </div>
     </div>
   );

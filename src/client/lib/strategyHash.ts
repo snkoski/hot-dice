@@ -2,6 +2,5 @@ export {
   generateStrategyHash,
   createInitialStats,
   updateStrategyStats,
-  calculateDerivedStats,
+  calculateDerivedStats
 } from '../../strategies/strategy-hash';
-export type { StrategyStats } from '../../strategies/strategy-hash';

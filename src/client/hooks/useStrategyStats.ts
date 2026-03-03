@@ -1,83 +1,45 @@
-import { useCallback } from 'react';
-import type { StrategyStats } from '../types/stats';
-import { createInitialStats, updateStrategyStats as updateStats, calculateDerivedStats } from '../lib/strategyHash';
+import { useState, useEffect } from 'react';
+import { StrategyStats } from '../types/stats';
 
-const STATS_STORAGE_KEY = 'hot-dice-strategy-stats';
+const STORAGE_KEY = 'hot-dice-strategy-stats';
 
-interface VersionedData {
+interface StorageEnvelope {
   version: number;
   data: Record<string, StrategyStats>;
 }
 
-function loadRaw(): Record<string, StrategyStats> {
-  try {
-    const raw = localStorage.getItem(STATS_STORAGE_KEY);
-    if (!raw) return {};
-    const parsed = JSON.parse(raw);
-    if (parsed && typeof parsed.version === 'number') {
-      return (parsed as VersionedData).data;
-    }
-    return parsed as Record<string, StrategyStats>;
-  } catch {
-    return {};
-  }
-}
-
-function save(data: Record<string, StrategyStats>) {
-  const envelope: VersionedData = { version: 1, data };
-  localStorage.setItem(STATS_STORAGE_KEY, JSON.stringify(envelope));
-}
-
 export function useStrategyStats() {
-  const loadAll = useCallback((): Record<string, StrategyStats> => loadRaw(), []);
+  const [stats, setStats] = useState<Record<string, StrategyStats>>({});
 
-  const loadAllDerived = useCallback((): StrategyStats[] => {
-    return Object.values(loadRaw()).map(calculateDerivedStats);
-  }, []);
-
-  const getOrCreate = useCallback(
-    (hash: string, name: string, description: string): StrategyStats => {
-      const all = loadRaw();
-      if (!all[hash]) {
-        all[hash] = createInitialStats(hash, name, description);
-        save(all);
+  useEffect(() => {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (raw) {
+      try {
+        const parsed = JSON.parse(raw);
+        if (parsed.version === undefined) {
+          // migrate version 0 to 1
+          const migrated: StorageEnvelope = { version: 1, data: parsed };
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(migrated));
+          setStats(migrated.data);
+        } else {
+          setStats(parsed.data);
+        }
+      } catch (e) {
+        console.error('Failed to parse strategy stats', e);
       }
-      return all[hash];
-    },
-    [],
-  );
-
-  const update = useCallback(
-    (
-      hash: string,
-      results: {
-        name?: string;
-        gamesPlayed: number;
-        wins: number;
-        totalTurns: number;
-        totalRolls: number;
-        totalFarkles: number;
-        totalPoints: number;
-        totalSuccessfulTurns: number;
-        totalFarkleDice?: number;
-        totalFarkleEvents?: number;
-        totalExpectedFarkles?: number;
-        totalActualFarkles?: number;
-      },
-    ): StrategyStats => {
-      const all = loadRaw();
-      const existing = all[hash] ?? createInitialStats(hash, results.name ?? 'Unknown', '');
-      if (results.name) existing.name = results.name;
-      all[hash] = updateStats(existing, results);
-      save(all);
-      return calculateDerivedStats(all[hash]);
-    },
-    [],
-  );
-
-  const clearAll = useCallback(() => {
-    localStorage.removeItem(STATS_STORAGE_KEY);
+    }
   }, []);
 
-  return { loadAll, loadAllDerived, getOrCreate, update, clearAll };
+  const updateStats = (newStats: Record<string, StrategyStats>) => {
+    setStats(newStats);
+    const envelope: StorageEnvelope = { version: 1, data: newStats };
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(envelope));
+  };
+
+  const clearStats = () => {
+    setStats({});
+    localStorage.removeItem(STORAGE_KEY);
+  };
+
+  return { stats, updateStats, clearStats };
 }

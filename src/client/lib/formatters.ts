@@ -1,11 +1,20 @@
+/**
+ * Format score type for display
+ */
 export function formatScoreType(type: string): string {
-  return type
-    .replace(/_/g, ' ')
-    .replace(/\b\w/g, (l) => l.toUpperCase());
+  return type.replace(/_/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase());
 }
 
-export const DICE_FACES = ['⚀', '⚁', '⚂', '⚃', '⚄', '⚅'] as const;
+/**
+ * Format numbers with commas
+ */
+export function formatNumber(num: number): string {
+  return num.toLocaleString();
+}
 
-export function getDiceFace(value: number): string {
-  return DICE_FACES[value - 1] ?? '?';
+/**
+ * Format percentages
+ */
+export function formatPercent(num: number): string {
+  return `${(num * 100).toFixed(1)}%`;
 }

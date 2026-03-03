@@ -1,28 +1,24 @@
-import clsx from 'clsx';
-import { getDiceFace } from '../../lib/formatters';
-import './stepThrough.css';
+import React from 'react';
+import { DiceFace } from '../shared/DiceFace';
 
 interface DiceDisplayProps {
-  diceValues: number[];
+  diceRolled: number[];
   selectedIndices?: number[];
-  isFarkle?: boolean;
+  farkle?: boolean;
 }
 
-export function DiceDisplay({ diceValues, selectedIndices = [], isFarkle = false }: DiceDisplayProps) {
-  if (!diceValues || diceValues.length === 0) return null;
+export function DiceDisplay({ diceRolled, selectedIndices = [], farkle = false }: DiceDisplayProps) {
+  if (!diceRolled || diceRolled.length === 0) return null;
 
   return (
     <div className="dice-container">
-      {diceValues.map((value, index) => (
-        <div
-          key={index}
-          className={clsx('die', {
-            selected: selectedIndices.includes(index),
-            farkle: isFarkle,
-          })}
-        >
-          {getDiceFace(value)}
-        </div>
+      {diceRolled.map((val, i) => (
+        <DiceFace
+          key={i} // array index is correct here as per plan
+          value={val}
+          selected={selectedIndices.includes(i)}
+          farkle={farkle}
+        />
       ))}
     </div>
   );

@@ -3,16 +3,12 @@
   "compilerOptions": {
     "jsx": "react-jsx",
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
-    "types": ["vite/client"],
-    "declaration": false,
-    "declarationMap": false,
-    "outDir": "./dist"
+    "types": ["vite/client"]
   },
   "include": [
     "src/client/**/*",
     "src/core/types.ts",
     "src/simulator/types.ts",
     "src/strategies/strategy-hash.ts"
-  ],
-  "exclude": ["node_modules", "dist"]
+  ]
 }

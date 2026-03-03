@@ -1,52 +1,40 @@
+import React from 'react';
 import { DiceSelectionUI } from './DiceSelectionUI';
 import { ContinueDecisionUI } from './ContinueDecisionUI';
 
 interface HumanDecisionUIProps {
+  phase: 'awaiting_dice_selection' | 'awaiting_continue';
   step: any;
   selectedIndices: number[];
-  mirroredDice: boolean;
-  isSubmitting: boolean;
   onToggleDie: (index: number) => void;
-  onSelectAllDice: (indices: number[]) => void;
-  onConfirmDice: () => void;
-  onContinueDecision: (continueRolling: boolean) => void;
+  onSelectAll: () => void;
+  onConfirm: (decisionPayload: any) => void;
+  isSubmitting: boolean;
 }
 
-export function HumanDecisionUI({
-  step,
-  selectedIndices,
-  mirroredDice,
-  isSubmitting,
-  onToggleDie,
-  onSelectAllDice,
-  onConfirmDice,
-  onContinueDecision,
-}: HumanDecisionUIProps) {
-  if (!step.humanDecisions?.length) return null;
-  const hd = step.humanDecisions[0];
-
-  if (hd.type === 'dice') {
+export function HumanDecisionUI({ phase, step, selectedIndices, onToggleDie, onSelectAll, onConfirm, isSubmitting }: HumanDecisionUIProps) {
+  if (phase === 'awaiting_dice_selection') {
     return (
       <DiceSelectionUI
-        diceRolled={hd.context.diceRolled}
-        scoringCombinations={hd.context.scoringCombinations}
-        turnPoints={hd.context.turnPoints}
+        context={step.decision.context}
         selectedIndices={selectedIndices}
-        mirroredDice={mirroredDice}
+        onToggleDie={onToggleDie}
+        onSelectAll={onSelectAll}
+        onConfirm={onConfirm}
         isSubmitting={isSubmitting}
-        onToggle={onToggleDie}
-        onSelectAll={onSelectAllDice}
-        onConfirm={onConfirmDice}
       />
     );
   }
 
-  return (
-    <ContinueDecisionUI
-      turnPoints={hd.context.turnPoints}
-      diceRemaining={hd.context.diceRemaining}
-      isSubmitting={isSubmitting}
-      onDecision={onContinueDecision}
-    />
-  );
+  if (phase === 'awaiting_continue') {
+    return (
+      <ContinueDecisionUI
+        context={step.decision.context}
+        onConfirm={onConfirm}
+        isSubmitting={isSubmitting}
+      />
+    );
+  }
+
+  return null;
 }

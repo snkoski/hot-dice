@@ -1,56 +1,62 @@
-import clsx from 'clsx';
+import React from 'react';
+import { clsx } from 'clsx';
 import './strategies.css';
 
-interface StrategyCardProps {
+export interface StrategyDTO {
   id: string;
   name: string;
   description: string;
-  selected: boolean;
+  version: string;
+  details?: any;
   isCustom?: boolean;
-  hasDetails?: boolean;
+}
+
+interface StrategyCardProps {
+  strategy: StrategyDTO;
+  selected: boolean;
   onToggle: (id: string) => void;
-  onShowDetails?: (id: string) => void;
+  onShowDetails: (e: React.MouseEvent, strategy: StrategyDTO) => void;
   onRemove?: (id: string) => void;
 }
 
-export function StrategyCard({
-  id,
-  name,
-  description,
-  selected,
-  isCustom,
-  hasDetails,
-  onToggle,
-  onShowDetails,
-  onRemove,
-}: StrategyCardProps) {
+export function StrategyCard({ strategy, selected, onToggle, onShowDetails, onRemove }: StrategyCardProps) {
   return (
     <div
-      className={clsx('strategy-card', { selected, custom: isCustom })}
-      onClick={() => onToggle(id)}
+      className={clsx('strategy-card', {
+        selected,
+        custom: strategy.isCustom
+      })}
+      onClick={() => onToggle(strategy.id)}
     >
       <div className="strategy-header">
-        <h3>{name}</h3>
-        {isCustom && onRemove && (
-          <button
-            className="remove-btn"
-            onClick={(e) => { e.stopPropagation(); onRemove(id); }}
-            title="Remove this custom strategy"
-          >
-            ✕
-          </button>
-        )}
-        {hasDetails && onShowDetails && (
-          <button
-            className="info-btn"
-            onClick={(e) => { e.stopPropagation(); onShowDetails(id); }}
-            title="Show strategy details"
-          >
-            ℹ️
-          </button>
-        )}
+        <h3>{strategy.name}</h3>
+        <div>
+          {strategy.details && (
+            <button
+              className="info-btn"
+              title="View Strategy Details"
+              onClick={(e) => onShowDetails(e, strategy)}
+            >
+              i
+            </button>
+          )}
+          {strategy.isCustom && onRemove && (
+            <button
+              className="remove-btn"
+              onClick={(e) => {
+                e.stopPropagation();
+                onRemove(strategy.id);
+              }}
+            >
+              Remove
+            </button>
+          )}
+        </div>
       </div>
-      <p>{description}</p>
+      <p>{strategy.description}</p>
+      {strategy.version && (
+        <small style={{ color: '#999' }}>v{strategy.version}</small>
+      )}
     </div>
   );
 }
